@@ -1,0 +1,26 @@
+# Product requirements and other local reference material
+docs/
+
+# Local Codex/agent instructions
+AGENT.md
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Local configuration and secrets
+.env
+.env.*
+*.local
