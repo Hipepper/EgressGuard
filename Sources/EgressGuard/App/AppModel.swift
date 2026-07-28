@@ -6,6 +6,7 @@ import Observation
 final class AppModel {
     var status: GuardDisplayStatus = .starting
     var identity: ExitIdentity?
+    var ipv6Address: String?
     var settings: GuardSettings {
         didSet { settingsStore.saveSettings(settings) }
     }
@@ -17,15 +18,21 @@ final class AppModel {
     var policyMessage: String?
 
     private let providerCoordinator: ProviderCoordinator
+    private let ipv6Provider: any IPv6AddressProviding
     private let settingsStore: SettingsStore
     private var monitoringTask: Task<Void, Never>?
+    private var ipv6Task: Task<Void, Never>?
     private let guardEngine = GuardEngine(configuration: GuardEngineConfiguration(
         violationThreshold: GuardSettings.defaults.violationThreshold,
         recoveryThreshold: GuardSettings.defaults.recoveryThreshold,
         startupGracePeriod: GuardSettings.defaults.startupGracePeriod
     ))
 
-    init(providerCoordinator: ProviderCoordinator? = nil, settingsStore: SettingsStore = SettingsStore()) {
+    init(
+        providerCoordinator: ProviderCoordinator? = nil,
+        ipv6Provider: (any IPv6AddressProviding)? = nil,
+        settingsStore: SettingsStore = SettingsStore()
+    ) {
         self.settingsStore = settingsStore
         settings = settingsStore.loadSettings()
         protectedApplications = settingsStore.loadApplications()
@@ -34,17 +41,31 @@ final class AppModel {
             IPAPICoProvider(),
             IPIPNetProvider()
         ])
+        self.ipv6Provider = ipv6Provider ?? IPv6AddressProvider()
     }
 
-    var menuBarTitle: String {
-        guard let identity else { return "EgressGuard" }
-        return "\(identity.countryFlag) \(identity.abbreviatedIP)"
+    var menuBarText: String? {
+        guard settings.menuBarIPDisplayMode != .iconOnly else { return nil }
+
+        var parts: [String] = []
+        if settings.showsCountryFlagInMenuBar, let identity {
+            parts.append(identity.countryFlag)
+        }
+        if let ipv4 = identity?.ipv4Address {
+            switch settings.menuBarIPDisplayMode {
+            case .iconOnly: break
+            case .fullIPv4: parts.append(ipv4)
+            case .abbreviatedIPv4: parts.append(ipv4.abbreviatedIPv4)
+            }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
     func checkNow() {
         guard status != .checking else { return }
         status = .checking
         lastErrorMessage = nil
+        refreshIPv6Address()
         Task {
             do {
                 let fetchedIdentity = try await providerCoordinator.fetchIdentity()
@@ -70,6 +91,16 @@ final class AppModel {
                 lastErrorMessage = error.localizedDescription
                 status = .unavailable
             }
+        }
+    }
+
+    private func refreshIPv6Address() {
+        ipv6Task?.cancel()
+        ipv6Address = nil
+        ipv6Task = Task { [weak self, ipv6Provider] in
+            let address = try? await ipv6Provider.fetchAddress()
+            guard !Task.isCancelled else { return }
+            self?.ipv6Address = address
         }
     }
 

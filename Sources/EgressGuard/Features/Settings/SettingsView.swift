@@ -1,23 +1,85 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsSection.allCases, selection: $model.selectedSettingsSection) { section in
-                Label(section.title, systemImage: section.symbolName).tag(section)
+        HStack(spacing: 0) {
+            SettingsSidebar(selection: $model.selectedSettingsSection)
+                .frame(width: 224)
+            Divider()
+            Group {
+                switch model.selectedSettingsSection ?? .overview {
+                case .overview: GeneralSettingsView(settings: $model.settings)
+                case .rules: RulesSettingsView(settings: $model.settings)
+                case .applications: ApplicationPickerView(model: model)
+                case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
+                case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
+                }
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190)
-        } detail: {
-            switch model.selectedSettingsSection ?? .overview {
-            case .overview: GeneralSettingsView(settings: $model.settings)
-            case .rules: RulesSettingsView(settings: $model.settings)
-            case .applications: ApplicationPickerView(model: model)
-            case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
-            case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.top, 42)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
+        .background(.ultraThinMaterial)
+    }
+}
+
+private struct SettingsSidebar: View {
+    @Binding var selection: SettingsSection?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 11) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable().frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("EgressGuard").font(.headline)
+                    Text("出口安全控制台").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 18)
+
+            VStack(spacing: 5) {
+                ForEach(SettingsSection.allCases) { section in
+                    Button { selection = section } label: {
+                        HStack(spacing: 11) {
+                            Image(systemName: section.symbolName)
+                                .font(.system(size: 14, weight: .medium)).frame(width: 20)
+                            Text(section.title).fontWeight(selection == section ? .semibold : .regular)
+                            Spacer()
+                        }
+                        .foregroundStyle(selection == section ? Color.white : Color.primary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 38)
+                        .background {
+                            if selection == section {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(LinearGradient(
+                                        colors: [Color(red: 0.05, green: 0.47, blue: 0.78), Color(red: 0.05, green: 0.68, blue: 0.70)],
+                                        startPoint: .leading, endPoint: .trailing
+                                    ))
+                                    .shadow(color: .cyan.opacity(0.18), radius: 8, y: 2)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+
+            Spacer()
+            HStack(spacing: 8) {
+                Circle().fill(.green).frame(width: 7, height: 7)
+                Text("本地保护服务").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(18)
+        }
+        .padding(.top, 56)
+        .background(.regularMaterial)
     }
 }
 
@@ -26,6 +88,24 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            Section("菜单栏显示") {
+                Picker("IP 展示方式", selection: $settings.menuBarIPDisplayMode) {
+                    ForEach(MenuBarIPDisplayMode.allCases) { mode in
+                        HStack {
+                            Text(mode.title)
+                            Text(mode.example).foregroundStyle(.secondary)
+                        }
+                        .tag(mode)
+                    }
+                }
+                Toggle("显示出口国家/地区旗帜", isOn: $settings.showsCountryFlagInMenuBar)
+                    .disabled(settings.menuBarIPDisplayMode == .iconOnly)
+                Text(settings.menuBarIPDisplayMode == .iconOnly
+                     ? "仅显示保护正常、已暂停或异常三类状态图标。"
+                     : "IPv4 会显示在菜单栏；只有 IPv6 时仅保留状态图标。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("保护") {
                 Toggle("启用出口保护", isOn: $settings.isProtectionEnabled)
                     .disabled(!settings.hasPolicyConstraints)

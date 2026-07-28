@@ -101,6 +101,28 @@ struct ProviderTests {
         }
     }
 
+    @Test("Dedicated IPv6 provider parses a reachable IPv6 address")
+    func ipv6AddressParsing() async throws {
+        let provider = IPv6AddressProvider(
+            loader: StubLoader(statusCode: 200, body: "2001:db8::42\n")
+        )
+
+        let address = try await provider.fetchAddress()
+
+        #expect(address == "2001:db8::42")
+    }
+
+    @Test("Dedicated IPv6 provider rejects IPv4 responses")
+    func ipv6AddressRejectsIPv4() async {
+        let provider = IPv6AddressProvider(
+            loader: StubLoader(statusCode: 200, body: "203.0.113.10")
+        )
+
+        await #expect(throws: ExitIPProviderError.malformedPayload) {
+            try await provider.fetchAddress()
+        }
+    }
+
     private func sampleIdentity(provider: String) -> ExitIdentity {
         ExitIdentity(
             ip: "203.0.113.10",

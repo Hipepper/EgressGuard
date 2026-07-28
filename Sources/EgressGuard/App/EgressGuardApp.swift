@@ -8,7 +8,15 @@ struct EgressGuardApp: App {
         MenuBarExtra {
             MenuBarContentView(model: model)
         } label: {
-            Label(model.menuBarTitle, systemImage: model.status.symbolName)
+            HStack(spacing: 5) {
+                Image(systemName: model.status.symbolName)
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 16, height: 16)
+                if let menuBarText = model.menuBarText {
+                    Text(menuBarText)
+                }
+            }
                 .task { model.startMonitoring() }
         }
         .menuBarExtraStyle(.window)

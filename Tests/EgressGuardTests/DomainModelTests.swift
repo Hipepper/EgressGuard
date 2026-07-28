@@ -41,5 +41,30 @@ struct DomainModelTests {
         #expect(GuardSettings.defaults.violationThreshold == 3)
         #expect(GuardSettings.defaults.recoveryThreshold == 2)
         #expect(GuardSettings.defaults.isProtectionEnabled == false)
+        #expect(GuardSettings.defaults.menuBarIPDisplayMode == .iconOnly)
+        #expect(GuardSettings.defaults.showsCountryFlagInMenuBar == false)
+    }
+
+    @Test("Legacy settings decode with safe menu bar defaults")
+    func legacySettingsDecode() throws {
+        let json = #"""
+        {
+          "isProtectionEnabled": true,
+          "checkInterval": 30,
+          "requestTimeout": 5,
+          "violationThreshold": 3,
+          "recoveryThreshold": 2,
+          "startupGracePeriod": 60,
+          "allowedIPs": [],
+          "allowedCIDRs": [],
+          "allowedCountryCodes": ["SG"],
+          "allowedASNs": []
+        }
+        """#
+
+        let settings = try JSONDecoder().decode(GuardSettings.self, from: Data(json.utf8))
+        #expect(settings.allowedCountryCodes == ["SG"])
+        #expect(settings.menuBarIPDisplayMode == .iconOnly)
+        #expect(settings.showsCountryFlagInMenuBar == false)
     }
 }
