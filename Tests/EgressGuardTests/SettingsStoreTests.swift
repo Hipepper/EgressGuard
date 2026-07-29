@@ -18,6 +18,15 @@ struct SettingsStoreTests {
         settings.menuBarIPDisplayMode = .abbreviatedIPv4
         settings.menuBarCountryDisplayMode = .code
         settings.interfaceTheme = .light
+        settings.email = EmailConfiguration(
+            isEnabled: true,
+            smtpHost: "smtp.example.com",
+            smtpPort: 587,
+            security: .startTLS,
+            username: "sender@example.com",
+            senderAddress: "sender@example.com",
+            recipientAddress: "alerts@example.com"
+        )
         let application = ProtectedApplication(
             bundleIdentifier: "com.example.App",
             displayName: "Example",
@@ -29,6 +38,7 @@ struct SettingsStoreTests {
 
         #expect(store.loadSettings() == settings)
         #expect(store.loadSettings().interfaceTheme == .light)
+        #expect(store.loadSettings().email == settings.email)
         #expect(store.loadApplications() == [application])
     }
 }

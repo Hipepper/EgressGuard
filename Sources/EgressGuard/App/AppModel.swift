@@ -22,6 +22,10 @@ final class AppModel {
     var lastErrorMessage: String?
     var policyMessage: String?
     var ruleTestStatuses: [UUID: RuleTestStatus] = [:]
+    var emailPassword: String {
+        didSet { emailPasswordStore.save(emailPassword) }
+    }
+    var emailTestStatus: EmailTestStatus = .idle
 
     private let providerCoordinator: ProviderCoordinator
     private let directProviderCoordinator: ProviderCoordinator
@@ -29,6 +33,9 @@ final class AppModel {
     private let actionExecutor: RuleActionExecutor
     private let notificationService: any ExitNotificationSending
     private let networkChangeMonitor: any NetworkChangeMonitoring
+    private let emailService: any EmailSending
+    private let emailPasswordStore: EmailPasswordStore
+    private var hasNotifiedCurrentFailure = false
     private var monitoringTask: Task<Void, Never>?
     private var networkRefreshTask: Task<Void, Never>?
     private let guardEngine = GuardEngine(configuration: GuardEngineConfiguration(
@@ -43,12 +50,17 @@ final class AppModel {
         settingsStore: SettingsStore = SettingsStore(),
         actionExecutor: RuleActionExecutor = RuleActionExecutor(),
         notificationService: any ExitNotificationSending = SystemExitNotificationService(),
-        networkChangeMonitor: any NetworkChangeMonitoring = SystemNetworkChangeMonitor()
+        networkChangeMonitor: any NetworkChangeMonitoring = SystemNetworkChangeMonitor(),
+        emailService: any EmailSending = CurlEmailService(),
+        emailPasswordStore: EmailPasswordStore = EmailPasswordStore()
     ) {
         self.settingsStore = settingsStore
         self.actionExecutor = actionExecutor
         self.notificationService = notificationService
         self.networkChangeMonitor = networkChangeMonitor
+        self.emailService = emailService
+        self.emailPasswordStore = emailPasswordStore
+        emailPassword = emailPasswordStore.load()
         settings = settingsStore.loadSettings()
         protectedApplications = settingsStore.loadApplications()
         self.providerCoordinator = providerCoordinator ?? ProviderCoordinator(providers: [
@@ -101,8 +113,13 @@ final class AppModel {
             guard let policyIdentity = proxyResult ?? directResult else {
                 lastErrorMessage = ExitIPProviderError.allProvidersFailed.localizedDescription
                 status = .unavailable
+                if !hasNotifiedCurrentFailure {
+                    hasNotifiedCurrentFailure = true
+                    await sendEmailIfEnabled(subject: "EgressGuard 运行失败", body: lastErrorMessage ?? "所有公网出口检测服务均不可用")
+                }
                 return
             }
+            hasNotifiedCurrentFailure = false
 
             let changes = ExitChangeDetector.changes(
                 previousProxy: identity,
@@ -113,6 +130,12 @@ final class AppModel {
             identity = proxyResult
             directIdentity = directResult
             await notificationService.notify(changes: changes)
+            if !changes.isEmpty {
+                await sendEmailIfEnabled(
+                    subject: "EgressGuard 检测到 IP 变更",
+                    body: changes.map { "\($0.perspective.title)：\($0.oldIP) → \($0.newIP)" }.joined(separator: "\n")
+                )
+            }
 
             if settings.isProtectionActive {
                 await guardEngine.updateConfiguration(engineConfiguration)
@@ -134,6 +157,14 @@ final class AppModel {
                         triggeredRuleIDs: evaluation.triggeredRuleIDs
                     )
                     await notificationService.notify(actionResults: results)
+                    if !results.isEmpty {
+                        await sendEmailIfEnabled(
+                            subject: "EgressGuard 保护规则已执行",
+                            body: results.map {
+                                "\($0.action.title) \($0.applicationName)：\($0.succeeded ? "成功" : "失败")。\($0.detail)"
+                            }.joined(separator: "\n")
+                        )
+                    }
                     let mitigated = await guardEngine.markMitigated()
                     apply(mitigated.state)
                 }
@@ -237,6 +268,39 @@ final class AppModel {
         }
     }
 
+    func testEmail() {
+        guard emailTestStatus != .sending else { return }
+        emailTestStatus = .sending
+        Task {
+            do {
+                try await emailService.send(
+                    EmailMessage(
+                        subject: "EgressGuard 测试邮件",
+                        body: "邮件通知配置成功。\n\n发送时间：\(Date().formatted(date: .abbreviated, time: .standard))"
+                    ),
+                    configuration: settings.email,
+                    password: emailPassword
+                )
+                emailTestStatus = .succeeded("测试邮件已发送至 \(settings.email.recipientAddress)")
+            } catch {
+                emailTestStatus = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private func sendEmailIfEnabled(subject: String, body: String) async {
+        guard settings.email.isEnabled else { return }
+        do {
+            try await emailService.send(
+                EmailMessage(subject: subject, body: body),
+                configuration: settings.email,
+                password: emailPassword
+            )
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
     private var engineConfiguration: GuardEngineConfiguration {
         GuardEngineConfiguration(
             violationThreshold: settings.violationThreshold,
@@ -254,6 +318,21 @@ final class AppModel {
         case let .recovering(count): status = .recovering(count: count)
         case .providerUnavailable: status = .unavailable
         case .paused: status = .paused
+        }
+    }
+}
+
+enum EmailTestStatus: Equatable, Sendable {
+    case idle
+    case sending
+    case succeeded(String)
+    case failed(String)
+
+    var message: String? {
+        switch self {
+        case .idle: nil
+        case .sending: "正在连接 SMTP 服务器…"
+        case let .succeeded(message), let .failed(message): message
         }
     }
 }

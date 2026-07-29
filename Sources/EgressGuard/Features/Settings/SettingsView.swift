@@ -20,7 +20,7 @@ struct SettingsView: View {
                     testStatuses: model.ruleTestStatuses,
                     onTest: model.testRule
                 )
-                case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
+                case .notifications: EmailSettingsView(model: model)
                 case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
                 case .preferences: PreferencesSettingsView(
                     settings: $model.settings,
@@ -255,7 +255,10 @@ private struct OverviewDashboardView: View {
                     dashboardHeader
                     metricCards
                     HStack(alignment: .top, spacing: 20) {
-                        identityPanel
+                        VStack(spacing: 20) {
+                            identityPanel
+                            emailPanel
+                        }
                         policyPanel.frame(width: 300)
                     }
                 }
@@ -325,6 +328,49 @@ private struct OverviewDashboardView: View {
         }
     }
 
+    private var emailPanel: some View {
+        DashboardPanel(title: "邮件通知", subtitle: emailSubtitle) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(DashboardPalette.blue.opacity(0.15))
+                    Image(systemName: model.settings.email.isEnabled ? "envelope.badge.fill" : "envelope.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(DashboardPalette.blue)
+                }
+                .frame(width: 46, height: 46)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        Circle()
+                            .fill(model.settings.email.isEnabled ? Color.green : DashboardPalette.text.opacity(0.28))
+                            .frame(width: 7, height: 7)
+                        Text(model.settings.email.isEnabled ? "邮件推送已开启" : "邮件推送未开启")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    Text(model.settings.email.displayAddress)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(DashboardPalette.text.opacity(0.52))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 12)
+
+                Button { model.selectedSettingsSection = .notifications } label: {
+                    Label("配置", systemImage: "arrow.right")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 12)
+                        .frame(height: 34)
+                        .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(DashboardPalette.border))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     private var policyPanel: some View {
         DashboardPanel(title: "保护策略", subtitle: policySummary) {
             VStack(alignment: .leading, spacing: 16) {
@@ -360,6 +406,11 @@ private struct OverviewDashboardView: View {
             ? "检测到代理与无代理请求分流"
             : "两个请求出口一致；VPN/TUN 可能隐藏物理直连"
         return "\(state) · \(identity.checkedAt.formatted(date: .omitted, time: .shortened)) 更新"
+    }
+
+    private var emailSubtitle: String {
+        guard model.settings.email.isComplete else { return "尚未完成 SMTP 与收件邮箱配置" }
+        return "IP 变更、规则执行和运行失败时发送告警"
     }
 
     private var networkOwner: String {
@@ -1219,6 +1270,142 @@ private struct PreferencesSettingsView: View {
             accessory()
         }
         .frame(minHeight: 58)
+    }
+}
+
+private struct EmailSettingsView: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        ZStack {
+            DashboardPalette.canvas.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    header
+                    DashboardPanel(title: "SMTP 邮件配置", subtitle: "密码或授权码保存在 macOS 钥匙串中") {
+                        VStack(spacing: 0) {
+                            emailRow(icon: "power", title: "推送邮件通知", subtitle: "IP 变更、规则执行或运行失败时发送") {
+                                Toggle("", isOn: $model.settings.email.isEnabled)
+                                    .labelsHidden().toggleStyle(.switch)
+                                    .disabled(
+                                        !model.settings.email.isEnabled &&
+                                            (!model.settings.email.isComplete || model.emailPassword.isEmpty)
+                                    )
+                            }
+                            Divider().overlay(DashboardPalette.border)
+                            fields
+                        }
+                    }
+
+                    DashboardPanel(title: "测试配置", subtitle: "保存会自动完成；测试将使用上方当前配置") {
+                        HStack(spacing: 14) {
+                            Button(action: model.testEmail) {
+                                Label(testButtonTitle, systemImage: testButtonSymbol)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .padding(.horizontal, 15).frame(height: 40)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DashboardPalette.purple)
+                            .disabled(model.emailTestStatus == .sending || !model.settings.email.isComplete || model.emailPassword.isEmpty)
+                            if let message = model.emailTestStatus.message {
+                                Label(message, systemImage: testButtonSymbol)
+                                    .font(.caption)
+                                    .foregroundStyle(testTint)
+                                    .textSelection(.enabled)
+                            } else {
+                                Text("请先填写完整配置，再发送测试邮件")
+                                    .font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.42))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 34).padding(.top, 42).padding(.bottom, 34)
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("邮件通知").font(.system(size: 30, weight: .bold, design: .rounded))
+            Text("配置告警收件邮箱和 SMTP 发件服务。")
+                .font(.system(size: 14)).foregroundStyle(DashboardPalette.text.opacity(0.52))
+        }
+    }
+
+    private var fields: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 14) {
+                mailField("SMTP 服务器", text: $model.settings.email.smtpHost, prompt: "smtp.example.com")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("端口").font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
+                    TextField("465", value: $model.settings.email.smtpPort, format: .number)
+                        .textFieldStyle(.plain).padding(.horizontal, 11).frame(width: 90, height: 38)
+                        .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("连接安全").font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
+                    Picker("连接安全", selection: $model.settings.email.security) {
+                        ForEach(EmailConfiguration.Security.allCases) { security in Text(security.title).tag(security) }
+                    }.labelsHidden().frame(width: 120)
+                }
+            }
+            HStack(spacing: 14) {
+                mailField("SMTP 用户名", text: $model.settings.email.username, prompt: "name@example.com")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("密码 / 授权码").font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
+                    SecureField("SMTP 密码或授权码", text: $model.emailPassword)
+                        .textFieldStyle(.plain).padding(.horizontal, 11).frame(height: 38)
+                        .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
+                }.frame(maxWidth: .infinity)
+            }
+            HStack(spacing: 14) {
+                mailField("发件邮箱", text: $model.settings.email.senderAddress, prompt: "sender@example.com")
+                mailField("收件邮箱", text: $model.settings.email.recipientAddress, prompt: "alerts@example.com")
+            }
+        }.padding(.top, 16)
+    }
+
+    private func mailField(_ title: String, text: Binding<String>, prompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
+            TextField(prompt, text: text)
+                .textFieldStyle(.plain).padding(.horizontal, 11).frame(height: 38)
+                .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
+        }.frame(maxWidth: .infinity)
+    }
+
+    private func emailRow<Accessory: View>(icon: String, title: String, subtitle: String, @ViewBuilder accessory: () -> Accessory) -> some View {
+        HStack(spacing: 13) {
+            Image(systemName: icon).foregroundStyle(DashboardPalette.purple).frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                Text(subtitle).font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.42))
+            }
+            Spacer(); accessory()
+        }.frame(minHeight: 58)
+    }
+
+    private var testButtonTitle: String {
+        switch model.emailTestStatus {
+        case .sending: "发送中"
+        case .succeeded: "再次测试"
+        default: "发送测试邮件"
+        }
+    }
+
+    private var testButtonSymbol: String {
+        switch model.emailTestStatus {
+        case .sending: "hourglass"
+        case .succeeded: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .idle: "paperplane.fill"
+        }
+    }
+
+    private var testTint: Color {
+        if case .failed = model.emailTestStatus { return DashboardPalette.coral }
+        if case .succeeded = model.emailTestStatus { return .green }
+        return DashboardPalette.purple
     }
 }
 

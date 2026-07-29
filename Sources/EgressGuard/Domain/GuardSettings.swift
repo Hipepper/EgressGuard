@@ -17,6 +17,7 @@ struct GuardSettings: Codable, Equatable, Sendable {
     var checkIntervalUnit: RefreshIntervalUnit
     var menuBarCountryDisplayMode: MenuBarCountryDisplayMode
     var interfaceTheme: InterfaceTheme
+    var email: EmailConfiguration
 
     static let defaults = GuardSettings(
         isProtectionEnabled: false,
@@ -38,7 +39,8 @@ struct GuardSettings: Codable, Equatable, Sendable {
         showsCountryFlagInMenuBar: false,
         checkIntervalUnit: .seconds,
         menuBarCountryDisplayMode: .hidden,
-        interfaceTheme: .system
+        interfaceTheme: .system,
+        email: .defaults
     )
 
     var hasPolicyConstraints: Bool {
@@ -158,7 +160,7 @@ extension GuardSettings {
         case violationThreshold, recoveryThreshold, startupGracePeriod
         case allowedIPs, allowedCIDRs, allowedCountryCodes, allowedASNs, rules
         case menuBarIPDisplayMode, showsCountryFlagInMenuBar
-        case checkIntervalUnit, menuBarCountryDisplayMode, interfaceTheme
+        case checkIntervalUnit, menuBarCountryDisplayMode, interfaceTheme, email
     }
 
     init(from decoder: Decoder) throws {
@@ -179,7 +181,8 @@ extension GuardSettings {
             showsCountryFlagInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsCountryFlagInMenuBar) ?? false,
             checkIntervalUnit: try container.decodeIfPresent(RefreshIntervalUnit.self, forKey: .checkIntervalUnit) ?? .seconds,
             menuBarCountryDisplayMode: .hidden,
-            interfaceTheme: try container.decodeIfPresent(InterfaceTheme.self, forKey: .interfaceTheme) ?? .system
+            interfaceTheme: try container.decodeIfPresent(InterfaceTheme.self, forKey: .interfaceTheme) ?? .system,
+            email: try container.decodeIfPresent(EmailConfiguration.self, forKey: .email) ?? .defaults
         )
         menuBarCountryDisplayMode = try container.decodeIfPresent(MenuBarCountryDisplayMode.self, forKey: .menuBarCountryDisplayMode)
             ?? (showsCountryFlagInMenuBar ? .flag : .hidden)
