@@ -276,7 +276,6 @@ enum RuleTestStatus: Equatable, Sendable {
 enum SettingsSection: String, CaseIterable, Identifiable {
     case overview
     case rules
-    case applications
     case notifications
     case history
     case preferences
@@ -287,7 +286,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "概览"
         case .rules: "保护规则"
-        case .applications: "受保护应用"
         case .notifications: "通知"
         case .history: "历史记录"
         case .preferences: "设置"
@@ -298,7 +296,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "square.grid.2x2"
         case .rules: "checklist"
-        case .applications: "app.badge.checkmark"
         case .notifications: "bell"
         case .history: "clock.arrow.circlepath"
         case .preferences: "gearshape"

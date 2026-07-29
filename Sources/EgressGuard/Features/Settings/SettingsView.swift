@@ -6,7 +6,11 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SettingsSidebar(selection: $model.selectedSettingsSection, isProtectionActive: model.settings.isProtectionActive)
+            SettingsSidebar(
+                selection: $model.selectedSettingsSection,
+                isProtectionActive: model.settings.isProtectionActive,
+                theme: $model.settings.interfaceTheme
+            )
                 .frame(width: 228)
             Group {
                 switch model.selectedSettingsSection ?? .overview {
@@ -16,7 +20,6 @@ struct SettingsView: View {
                     testStatuses: model.ruleTestStatuses,
                     onTest: model.testRule
                 )
-                case .applications: ApplicationPickerView(model: model)
                 case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
                 case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
                 case .preferences: PreferencesSettingsView(
@@ -28,15 +31,18 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(DashboardPalette.canvas)
+            .background(.ultraThinMaterial)
         }
+        .foregroundStyle(DashboardPalette.text)
         .background(DashboardPalette.sidebar)
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(model.settings.interfaceTheme.colorScheme)
     }
 }
 
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection?
     let isProtectionActive: Bool
+    @Binding var theme: InterfaceTheme
     @Namespace private var selectionAnimation
 
     var body: some View {
@@ -46,7 +52,7 @@ private struct SettingsSidebar: View {
                     .resizable().frame(width: 38, height: 38)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("EgressGuard").font(.system(size: 16, weight: .bold, design: .rounded))
-                    Text("出口安全控制台").font(.caption2).foregroundStyle(.white.opacity(0.48))
+                    Text("出口安全控制台").font(.caption2).foregroundStyle(DashboardPalette.text.opacity(0.48))
                 }
             }
             .padding(.horizontal, 20)
@@ -55,9 +61,7 @@ private struct SettingsSidebar: View {
             VStack(spacing: 5) {
                 ForEach(SettingsSection.allCases) { section in
                     Button {
-                        withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
-                            selection = section
-                        }
+                        selectSection(section)
                     } label: {
                         HStack(spacing: 11) {
                             Image(systemName: section.symbolName)
@@ -65,7 +69,7 @@ private struct SettingsSidebar: View {
                             Text(section.title).fontWeight(selection == section ? .semibold : .regular)
                             Spacer()
                         }
-                        .foregroundStyle(selection == section ? Color.white : Color.white.opacity(0.62))
+                        .foregroundStyle(selection == section ? Color.white : DashboardPalette.text.opacity(0.62))
                         .padding(.horizontal, 14)
                         .frame(height: 42)
                         .background {
@@ -84,21 +88,117 @@ private struct SettingsSidebar: View {
                     .buttonStyle(.plain)
                 }
             }
+            .overlay {
+                GeometryReader { proxy in
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    let sections = SettingsSection.allCases
+                                    guard let index = ContinuousSelection.index(
+                                        position: value.location.y,
+                                        totalExtent: proxy.size.height,
+                                        itemCount: sections.count
+                                    ) else { return }
+                                    selectSection(sections[index])
+                                }
+                        )
+                }
+            }
             .padding(.horizontal, 10)
 
             Spacer()
+            themeSelector
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
             HStack(spacing: 8) {
                 Circle().fill(isProtectionActive ? .green : .orange).frame(width: 7, height: 7)
                     .shadow(color: (isProtectionActive ? Color.green : Color.orange).opacity(0.8), radius: 5)
                 Text(isProtectionActive ? "出口保护已启用" : "出口保护未启用")
-                    .font(.caption).foregroundStyle(.white.opacity(0.48))
+                    .font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
             }
             .padding(20)
         }
         .padding(.top, 52)
+        .foregroundStyle(DashboardPalette.text)
         .background(
             LinearGradient(colors: [DashboardPalette.sidebar, DashboardPalette.sidebarBottom], startPoint: .top, endPoint: .bottom)
         )
+        .background(.ultraThinMaterial)
+    }
+
+    private var themeSelector: some View {
+        HStack(spacing: 3) {
+            ForEach(InterfaceTheme.allCases) { option in
+                Button {
+                    selectTheme(option)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: option.symbolName)
+                        Text(option.title)
+                    }
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .foregroundStyle(theme == option ? Color.white : DashboardPalette.text.opacity(0.62))
+                        .background {
+                            if theme == option {
+                                Capsule()
+                                    .fill(LinearGradient(
+                                        colors: [DashboardPalette.pink, DashboardPalette.blue],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ))
+                                    .matchedGeometryEffect(id: "theme-selection", in: selectionAnimation)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .help(option.title)
+            }
+        }
+        .overlay {
+            GeometryReader { proxy in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                let themes = InterfaceTheme.allCases
+                                guard let index = ContinuousSelection.index(
+                                    position: value.location.x,
+                                    totalExtent: proxy.size.width,
+                                    itemCount: themes.count
+                                ) else { return }
+                                selectTheme(themes[index])
+                            }
+                    )
+            }
+        }
+        .padding(3)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(DashboardPalette.border))
+    }
+
+    private func selectSection(_ section: SettingsSection) {
+        guard selection != section else { return }
+        withAnimation(.easeOut(duration: 0.12)) { selection = section }
+    }
+
+    private func selectTheme(_ option: InterfaceTheme) {
+        guard theme != option else { return }
+        withAnimation(.easeOut(duration: 0.10)) { theme = option }
+    }
+}
+
+private extension InterfaceTheme {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
     }
 }
 
@@ -210,7 +310,7 @@ private struct OverviewDashboardView: View {
                 .buttonStyle(.plain)
             }
             .font(.system(size: 13))
-            .foregroundStyle(.white.opacity(0.78))
+            .foregroundStyle(DashboardPalette.text.opacity(0.78))
         }
     }
 
@@ -255,13 +355,13 @@ private struct MetricCard: View {
         HStack(spacing: 15) {
             ZStack {
                 Circle().fill(LinearGradient(colors: colors.map { $0.opacity(0.42) }, startPoint: .topLeading, endPoint: .bottomTrailing))
-                Circle().stroke(.white.opacity(0.16))
+                Circle().stroke(DashboardPalette.border)
                 Image(systemName: icon).font(.system(size: 22, weight: .medium))
             }
             .frame(width: 54, height: 54)
             VStack(alignment: .leading, spacing: 4) {
                 Text(value).font(.system(size: 20, weight: .semibold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.7)
-                Text(label).font(.caption).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                Text(label).font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.55)).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -271,8 +371,10 @@ private struct MetricCard: View {
             LinearGradient(colors: [colors[0].opacity(0.18), DashboardPalette.panel, colors[1].opacity(0.13)], startPoint: .leading, endPoint: .trailing),
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.08)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(DashboardPalette.border))
         .shadow(color: .black.opacity(0.22), radius: 18, y: 10)
+        .foregroundStyle(DashboardPalette.text)
     }
 }
 
@@ -285,7 +387,7 @@ private struct DashboardPanel<Content: View>: View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.system(size: 20, weight: .bold, design: .rounded))
-                Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.45)).lineLimit(2)
+                Text(subtitle).font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.45)).lineLimit(2)
             }
             content
         }
@@ -295,8 +397,10 @@ private struct DashboardPanel<Content: View>: View {
             LinearGradient(colors: [DashboardPalette.panelTop, DashboardPalette.panel], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 20, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(DashboardPalette.border))
         .shadow(color: .black.opacity(0.20), radius: 20, y: 12)
+        .foregroundStyle(DashboardPalette.text)
     }
 }
 
@@ -311,27 +415,60 @@ private struct IdentityRow: View {
         VStack(spacing: 0) {
             HStack(spacing: 13) {
                 Image(systemName: icon).foregroundStyle(tint).frame(width: 22)
-                Text(title).foregroundStyle(.white.opacity(0.55))
+                Text(title).foregroundStyle(DashboardPalette.text.opacity(0.55))
                 Spacer()
                 Text(value).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
             }
             .font(.system(size: 13))
             .frame(height: 48)
-            if showsDivider { Divider().overlay(.white.opacity(0.07)) }
+            if showsDivider { Divider().overlay(DashboardPalette.border) }
         }
     }
 }
 
 private enum DashboardPalette {
-    static let canvas = Color(red: 0.015, green: 0.025, blue: 0.10)
-    static let sidebar = Color(red: 0.105, green: 0.055, blue: 0.135)
-    static let sidebarBottom = Color(red: 0.075, green: 0.055, blue: 0.16)
-    static let panel = Color(red: 0.115, green: 0.075, blue: 0.18)
-    static let panelTop = Color(red: 0.20, green: 0.11, blue: 0.22)
+    static let canvas = adaptive(
+        light: NSColor(calibratedRed: 0.84, green: 0.87, blue: 0.83, alpha: 0.78),
+        dark: NSColor(calibratedRed: 0.015, green: 0.025, blue: 0.10, alpha: 1)
+    )
+    static let sidebar = adaptive(
+        light: NSColor(calibratedRed: 0.88, green: 0.90, blue: 0.87, alpha: 0.76),
+        dark: NSColor(calibratedRed: 0.105, green: 0.055, blue: 0.135, alpha: 1)
+    )
+    static let sidebarBottom = adaptive(
+        light: NSColor(calibratedRed: 0.78, green: 0.83, blue: 0.78, alpha: 0.72),
+        dark: NSColor(calibratedRed: 0.075, green: 0.055, blue: 0.16, alpha: 1)
+    )
+    static let panel = adaptive(
+        light: NSColor(calibratedWhite: 0.96, alpha: 0.52),
+        dark: NSColor(calibratedRed: 0.115, green: 0.075, blue: 0.18, alpha: 1)
+    )
+    static let panelTop = adaptive(
+        light: NSColor(calibratedWhite: 1.0, alpha: 0.68),
+        dark: NSColor(calibratedRed: 0.20, green: 0.11, blue: 0.22, alpha: 1)
+    )
+    static let text = adaptive(
+        light: NSColor(calibratedWhite: 0.10, alpha: 1),
+        dark: NSColor(calibratedWhite: 1, alpha: 1)
+    )
+    static let border = adaptive(
+        light: NSColor(calibratedWhite: 1, alpha: 0.72),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.10)
+    )
+    static let glassFill = adaptive(
+        light: NSColor(calibratedWhite: 0, alpha: 0.055),
+        dark: NSColor(calibratedWhite: 1, alpha: 0.07)
+    )
     static let coral = Color(red: 1.0, green: 0.36, blue: 0.29)
     static let pink = Color(red: 0.96, green: 0.28, blue: 0.62)
     static let purple = Color(red: 0.57, green: 0.30, blue: 0.90)
     static let blue = Color(red: 0.20, green: 0.47, blue: 1.0)
+
+    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        })
+    }
 }
 
 private struct RulesSettingsView: View {
@@ -398,7 +535,7 @@ private struct RulesSettingsView: View {
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                 Text("按代理、无代理或任一出口判断条件；满足时执行指定的应用动作。")
                     .font(.system(size: 14))
-                    .foregroundStyle(.white.opacity(0.52))
+                    .foregroundStyle(DashboardPalette.text.opacity(0.52))
             }
             Spacer()
             Button(action: toggleAllRules) {
@@ -406,8 +543,8 @@ private struct RulesSettingsView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 12)
                     .frame(height: 40)
-                    .background(.white.opacity(0.08), in: Capsule())
-                    .overlay(Capsule().stroke(.white.opacity(0.08)))
+                    .background(DashboardPalette.glassFill, in: Capsule())
+                    .overlay(Capsule().stroke(DashboardPalette.border))
             }
             .buttonStyle(.plain)
             .disabled(settings.rules.isEmpty)
@@ -419,7 +556,7 @@ private struct RulesSettingsView: View {
             .foregroundStyle(settings.isProtectionActive ? Color.green : DashboardPalette.coral)
             .padding(.horizontal, 12)
             .frame(height: 40)
-            .background(.white.opacity(0.06), in: Capsule())
+            .background(DashboardPalette.glassFill, in: Capsule())
             Button(action: addRule) {
                 Label("新增规则", systemImage: "plus")
                     .font(.system(size: 13, weight: .semibold))
@@ -455,14 +592,16 @@ private struct RulesSettingsView: View {
             .frame(width: 64, height: 64)
             Text("还没有保护规则").font(.title3.bold())
             Text("创建一条规则，定义出口条件以及要打开或关闭的应用。")
-                .foregroundStyle(.white.opacity(0.46))
+                .foregroundStyle(DashboardPalette.text.opacity(0.46))
             Button("创建第一条规则", action: addRule)
                 .buttonStyle(.borderedProminent)
                 .tint(DashboardPalette.purple)
         }
         .frame(maxWidth: .infinity, minHeight: 360)
         .background(DashboardPalette.panel, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.07)))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(DashboardPalette.border))
+        .foregroundStyle(DashboardPalette.text)
     }
 
     private func addRule() {
@@ -520,7 +659,7 @@ private struct RuleStackCard: View {
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onToggleExpansion)
             if isExpanded {
-                Divider().overlay(.white.opacity(0.08))
+                Divider().overlay(DashboardPalette.border)
                 editor
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -529,18 +668,20 @@ private struct RuleStackCard: View {
             LinearGradient(colors: [DashboardPalette.panelTop, DashboardPalette.panel], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 17, style: .continuous)
         )
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(isExpanded ? DashboardPalette.purple.opacity(0.55) : .white.opacity(0.07), lineWidth: 1)
+                .stroke(isExpanded ? DashboardPalette.purple.opacity(0.55) : DashboardPalette.border, lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+        .foregroundStyle(DashboardPalette.text)
     }
 
     private var summary: some View {
         HStack(spacing: 12) {
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.38))
+                .foregroundStyle(DashboardPalette.text.opacity(0.38))
                 .frame(width: 16)
 
             Text(rule.perspective.title)
@@ -549,10 +690,10 @@ private struct RuleStackCard: View {
             Text(rule.comparison.title)
                 .foregroundStyle(rule.comparison == .isEqual ? DashboardPalette.coral : DashboardPalette.pink)
                 .fontWeight(.semibold)
-            Text(rule.condition.title).foregroundStyle(.white.opacity(0.58))
+            Text(rule.condition.title).foregroundStyle(DashboardPalette.text.opacity(0.58))
             conditionValue
             Image(systemName: "arrow.right")
-                .font(.caption).foregroundStyle(.white.opacity(0.28))
+                .font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.28))
             Text(rule.action.title)
                 .foregroundStyle(rule.action == .close ? DashboardPalette.coral : .green)
                 .fontWeight(.semibold)
@@ -572,7 +713,7 @@ private struct RuleStackCard: View {
 
     @ViewBuilder private var conditionValue: some View {
         if rule.value.isEmpty {
-            Text("尚未设置").foregroundStyle(.white.opacity(0.30)).italic()
+            Text("尚未设置").foregroundStyle(DashboardPalette.text.opacity(0.30)).italic()
         } else if rule.condition == .country {
             Text("\(CountryOption.flag(for: rule.value)) \(Locale.current.localizedString(forRegionCode: rule.value) ?? rule.value)")
                 .fontWeight(.semibold)
@@ -586,8 +727,8 @@ private struct RuleStackCard: View {
             RuleApplicationIcon(url: application.url).frame(width: 26, height: 26)
             Text(application.displayName).fontWeight(.medium).lineLimit(1)
         } else {
-            Image(systemName: "app.dashed").foregroundStyle(.white.opacity(0.30))
-            Text("选择应用").foregroundStyle(.white.opacity(0.30))
+            Image(systemName: "app.dashed").foregroundStyle(DashboardPalette.text.opacity(0.30))
+            Text("选择应用").foregroundStyle(DashboardPalette.text.opacity(0.30))
         }
     }
 
@@ -608,18 +749,18 @@ private struct RuleStackCard: View {
                             RuleApplicationIcon(url: application.url).frame(width: 30, height: 30)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(application.displayName).fontWeight(.semibold)
-                                Text(application.bundleIdentifier).font(.caption2).foregroundStyle(.white.opacity(0.38))
+                                Text(application.bundleIdentifier).font(.caption2).foregroundStyle(DashboardPalette.text.opacity(0.38))
                             }
                         } else {
                             Image(systemName: "plus.app.fill").foregroundStyle(DashboardPalette.purple)
                             Text("选择目标应用").fontWeight(.semibold)
                         }
                         Spacer()
-                        Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.white.opacity(0.35))
+                        Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.35))
                     }
                     .padding(.horizontal, 12)
                     .frame(height: 50)
-                    .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
 
@@ -691,7 +832,7 @@ private struct RuleStackCard: View {
                 }
                 .padding(.horizontal, 11)
                 .frame(minWidth: 190, minHeight: 38)
-                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
             }
             .buttonStyle(.plain)
         } else {
@@ -700,7 +841,7 @@ private struct RuleStackCard: View {
                 .font(.system(.body, design: .monospaced))
                 .padding(.horizontal, 11)
                 .frame(minWidth: 190, minHeight: 38)
-                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
         }
     }
 
@@ -884,7 +1025,7 @@ private struct PreferencesSettingsView: View {
                             .font(.system(size: 30, weight: .bold, design: .rounded))
                         Text("配置自动检测频率和 macOS 顶部状态栏的展示内容。")
                             .font(.system(size: 14))
-                            .foregroundStyle(.white.opacity(0.52))
+                            .foregroundStyle(DashboardPalette.text.opacity(0.52))
                     }
 
                     DashboardPanel(title: "自动检测", subtitle: "网络状态变化时仍会立即检测，此处作为周期兜底") {
@@ -896,7 +1037,7 @@ private struct PreferencesSettingsView: View {
                                 .background(DashboardPalette.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("自动刷新间隔").font(.system(size: 14, weight: .semibold))
-                                Text("最短 1 秒，修改后立即应用").font(.caption).foregroundStyle(.white.opacity(0.42))
+                                Text("最短 1 秒，修改后立即应用").font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.42))
                             }
                             Spacer()
                             TextField("30", value: intervalValue, format: .number.precision(.fractionLength(0...2)))
@@ -905,7 +1046,7 @@ private struct PreferencesSettingsView: View {
                                 .multilineTextAlignment(.trailing)
                                 .padding(.horizontal, 12)
                                 .frame(width: 108, height: 38)
-                                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                                .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
                             Picker("单位", selection: $settings.checkIntervalUnit) {
                                 ForEach(RefreshIntervalUnit.allCases) { unit in
                                     Text(unit.title).tag(unit)
@@ -926,7 +1067,7 @@ private struct PreferencesSettingsView: View {
                                 Toggle("", isOn: showsIPBinding).labelsHidden().toggleStyle(.switch)
                             }
 
-                            Divider().overlay(.white.opacity(0.08))
+                            Divider().overlay(DashboardPalette.border)
 
                             preferenceRow(
                                 icon: "textformat.abc",
@@ -941,7 +1082,7 @@ private struct PreferencesSettingsView: View {
                                 .disabled(!settings.showsIPInMenuBar)
                             }
 
-                            Divider().overlay(.white.opacity(0.08))
+                            Divider().overlay(DashboardPalette.border)
 
                             preferenceRow(
                                 icon: "flag.fill",
@@ -969,13 +1110,13 @@ private struct PreferencesSettingsView: View {
                                 Text(preview)
                                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                             } else {
-                                Text("仅显示状态图标").foregroundStyle(.white.opacity(0.48))
+                                Text("仅显示状态图标").foregroundStyle(DashboardPalette.text.opacity(0.48))
                             }
                             Spacer()
                         }
                         .padding(.horizontal, 14)
                         .frame(height: 48)
-                        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 11))
+                        .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 11))
                     }
                 }
                 .padding(.horizontal, 34)
@@ -1032,7 +1173,7 @@ private struct PreferencesSettingsView: View {
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.system(size: 14, weight: .semibold))
-                Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.42))
+                Text(subtitle).font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.42))
             }
             Spacer()
             accessory()

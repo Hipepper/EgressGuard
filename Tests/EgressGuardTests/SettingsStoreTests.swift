@@ -17,6 +17,7 @@ struct SettingsStoreTests {
         settings.setCheckInterval(value: 2, unit: .minutes)
         settings.menuBarIPDisplayMode = .abbreviatedIPv4
         settings.menuBarCountryDisplayMode = .code
+        settings.interfaceTheme = .light
         let application = ProtectedApplication(
             bundleIdentifier: "com.example.App",
             displayName: "Example",
@@ -27,6 +28,7 @@ struct SettingsStoreTests {
         store.saveApplications([application])
 
         #expect(store.loadSettings() == settings)
+        #expect(store.loadSettings().interfaceTheme == .light)
         #expect(store.loadApplications() == [application])
     }
 }

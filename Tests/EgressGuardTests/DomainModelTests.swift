@@ -83,10 +83,24 @@ struct DomainModelTests {
         #expect(GuardSettings.defaults.showsCountryFlagInMenuBar == false)
         #expect(GuardSettings.defaults.checkIntervalUnit == .seconds)
         #expect(GuardSettings.defaults.menuBarCountryDisplayMode == .hidden)
+        #expect(GuardSettings.defaults.interfaceTheme == .system)
         #expect(GuardSettings.defaults.rules.count == 3)
         #expect(GuardSettings.defaults.rules.allSatisfy { !$0.isEnabled })
         #expect(GuardSettings.defaults.rules.map(\.condition) == [.ip, .cidr, .country])
         #expect(GuardSettings.defaults.rules.map(\.value) == ["203.0.113.10", "203.0.113.0/24", "SG"])
+    }
+
+    @Test("Settings sidebar omits the redundant protected applications page")
+    func settingsSidebarSections() {
+        #expect(SettingsSection.allCases.map(\.title) == ["概览", "保护规则", "通知", "历史记录", "设置"])
+    }
+
+    @Test("Continuous selector maps pointer positions and clamps at its edges")
+    func continuousSelectionIndex() {
+        #expect(ContinuousSelection.index(position: -10, totalExtent: 300, itemCount: 3) == 0)
+        #expect(ContinuousSelection.index(position: 149, totalExtent: 300, itemCount: 3) == 1)
+        #expect(ContinuousSelection.index(position: 400, totalExtent: 300, itemCount: 3) == 2)
+        #expect(ContinuousSelection.index(position: 10, totalExtent: 0, itemCount: 3) == nil)
     }
 
     @Test("Protection can enable or disable every visual rule at once")

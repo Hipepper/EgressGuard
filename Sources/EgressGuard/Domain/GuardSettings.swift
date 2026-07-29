@@ -16,6 +16,7 @@ struct GuardSettings: Codable, Equatable, Sendable {
     var showsCountryFlagInMenuBar: Bool
     var checkIntervalUnit: RefreshIntervalUnit
     var menuBarCountryDisplayMode: MenuBarCountryDisplayMode
+    var interfaceTheme: InterfaceTheme
 
     static let defaults = GuardSettings(
         isProtectionEnabled: false,
@@ -36,7 +37,8 @@ struct GuardSettings: Codable, Equatable, Sendable {
         menuBarIPDisplayMode: .iconOnly,
         showsCountryFlagInMenuBar: false,
         checkIntervalUnit: .seconds,
-        menuBarCountryDisplayMode: .hidden
+        menuBarCountryDisplayMode: .hidden,
+        interfaceTheme: .system
     )
 
     var hasPolicyConstraints: Bool {
@@ -89,6 +91,28 @@ enum RefreshIntervalUnit: String, Codable, CaseIterable, Identifiable, Sendable 
     var secondsMultiplier: Double { self == .seconds ? 1 : 60 }
 }
 
+enum InterfaceTheme: String, Codable, CaseIterable, Identifiable, Sendable {
+    case system
+    case light
+    case dark
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .system: "自动"
+        case .light: "白天"
+        case .dark: "黑夜"
+        }
+    }
+    var symbolName: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max.fill"
+        case .dark: "moon.fill"
+        }
+    }
+}
+
 enum MenuBarCountryDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case hidden
     case flag
@@ -134,7 +158,7 @@ extension GuardSettings {
         case violationThreshold, recoveryThreshold, startupGracePeriod
         case allowedIPs, allowedCIDRs, allowedCountryCodes, allowedASNs, rules
         case menuBarIPDisplayMode, showsCountryFlagInMenuBar
-        case checkIntervalUnit, menuBarCountryDisplayMode
+        case checkIntervalUnit, menuBarCountryDisplayMode, interfaceTheme
     }
 
     init(from decoder: Decoder) throws {
@@ -154,7 +178,8 @@ extension GuardSettings {
             menuBarIPDisplayMode: try container.decodeIfPresent(MenuBarIPDisplayMode.self, forKey: .menuBarIPDisplayMode) ?? .iconOnly,
             showsCountryFlagInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsCountryFlagInMenuBar) ?? false,
             checkIntervalUnit: try container.decodeIfPresent(RefreshIntervalUnit.self, forKey: .checkIntervalUnit) ?? .seconds,
-            menuBarCountryDisplayMode: .hidden
+            menuBarCountryDisplayMode: .hidden,
+            interfaceTheme: try container.decodeIfPresent(InterfaceTheme.self, forKey: .interfaceTheme) ?? .system
         )
         menuBarCountryDisplayMode = try container.decodeIfPresent(MenuBarCountryDisplayMode.self, forKey: .menuBarCountryDisplayMode)
             ?? (showsCountryFlagInMenuBar ? .flag : .hidden)
@@ -174,5 +199,13 @@ extension GuardSettings {
         let cidrRules = cidrs.map { GuardRule(comparison: .isNot, condition: .cidr, value: $0) }
         let countryRules = countries.map { GuardRule(comparison: .isNot, condition: .country, value: $0) }
         return ipRules + cidrRules + countryRules
+    }
+}
+
+enum ContinuousSelection {
+    static func index(position: CGFloat, totalExtent: CGFloat, itemCount: Int) -> Int? {
+        guard totalExtent > 0, itemCount > 0 else { return nil }
+        let itemExtent = totalExtent / CGFloat(itemCount)
+        return min(max(Int(position / itemExtent), 0), itemCount - 1)
     }
 }
