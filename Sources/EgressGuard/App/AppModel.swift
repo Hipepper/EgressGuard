@@ -27,6 +27,8 @@ final class AppModel {
     }
     var emailTestStatus: EmailTestStatus = .idle
     var runtimeLogs: [RuntimeLogEntry] = []
+    var launchAtLoginStatus: LaunchAtLoginStatus = .disabled
+    var isUpdatingLaunchAtLogin = false
 
     private let providerCoordinator: ProviderCoordinator
     private let directProviderCoordinator: ProviderCoordinator
@@ -38,6 +40,7 @@ final class AppModel {
     private let emailPasswordStore: EmailPasswordStore
     private let sessionStartedAt = Date()
     private let sessionID = UUID()
+    private let launchAtLoginService: any LaunchAtLoginManaging
     private var hasNotifiedCurrentFailure = false
     private var monitoringTask: Task<Void, Never>?
     private var networkRefreshTask: Task<Void, Never>?
@@ -55,7 +58,8 @@ final class AppModel {
         notificationService: any ExitNotificationSending = SystemExitNotificationService(),
         networkChangeMonitor: any NetworkChangeMonitoring = SystemNetworkChangeMonitor(),
         emailService: any EmailSending = CurlEmailService(),
-        emailPasswordStore: EmailPasswordStore = EmailPasswordStore()
+        emailPasswordStore: EmailPasswordStore = EmailPasswordStore(),
+        launchAtLoginService: any LaunchAtLoginManaging = SystemLaunchAtLoginService()
     ) {
         self.settingsStore = settingsStore
         self.actionExecutor = actionExecutor
@@ -63,6 +67,7 @@ final class AppModel {
         self.networkChangeMonitor = networkChangeMonitor
         self.emailService = emailService
         self.emailPasswordStore = emailPasswordStore
+        self.launchAtLoginService = launchAtLoginService
         emailPassword = emailPasswordStore.load()
         settings = settingsStore.loadSettings()
         protectedApplications = settingsStore.loadApplications()
@@ -75,6 +80,7 @@ final class AppModel {
         self.directProviderCoordinator = directProviderCoordinator ?? ProviderCoordinator(providers: [
             IPifyProvider(loader: DirectHTTPDataLoader())
         ])
+        launchAtLoginStatus = launchAtLoginService.status
         appendLog(.lifecycle, message: "EgressGuard 启动", detail: "新运行会话已创建")
         appendLog(
             .lifecycle,
@@ -358,6 +364,29 @@ final class AppModel {
 
     func recordTermination() {
         appendLog(.lifecycle, message: "用户退出 EgressGuard")
+    }
+
+    func setLaunchAtLoginEnabled(_ isEnabled: Bool) {
+        guard !isUpdatingLaunchAtLogin else { return }
+        isUpdatingLaunchAtLogin = true
+        defer { isUpdatingLaunchAtLogin = false }
+        do {
+            try launchAtLoginService.setEnabled(isEnabled)
+            launchAtLoginStatus = launchAtLoginService.status
+            appendLog(
+                .lifecycle,
+                level: launchAtLoginStatus == .enabled ? .success : .info,
+                message: isEnabled ? "已申请开启开机自启动" : "已关闭开机自启动",
+                detail: launchAtLoginStatus.detail
+            )
+        } catch {
+            launchAtLoginStatus = .failed(error.localizedDescription)
+            appendLog(.error, level: .error, message: "开机自启动设置失败", detail: error.localizedDescription)
+        }
+    }
+
+    func openLoginItemsSettings() {
+        launchAtLoginService.openSystemSettings()
     }
 
     private func appendLog(

@@ -262,7 +262,7 @@ private struct OverviewDashboardView: View {
                         }
                         HStack(alignment: .top, spacing: 20) {
                             emailPanel
-                            Color.clear.frame(width: 300)
+                            launchAtLoginPanel.frame(width: 300)
                         }
                     }
                 }
@@ -373,6 +373,44 @@ private struct OverviewDashboardView: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private var launchAtLoginPanel: some View {
+        DashboardPanel(title: "开机自启动", subtitle: model.launchAtLoginStatus.detail) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(DashboardPalette.purple.opacity(0.15))
+                    Image(systemName: "power.circle.fill")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(DashboardPalette.purple)
+                }
+                .frame(width: 46, height: 46)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.launchAtLoginStatus.title)
+                        .font(.system(size: 14, weight: .semibold))
+                    if model.launchAtLoginStatus == .requiresApproval {
+                        Button("打开系统设置", action: model.openLoginItemsSettings)
+                            .buttonStyle(.link)
+                            .font(.caption)
+                    }
+                }
+
+                Spacer(minLength: 8)
+                Toggle("开机自启动", isOn: launchAtLoginBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(model.isUpdatingLaunchAtLogin)
+            }
+        }
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { model.launchAtLoginStatus.isEnabled },
+            set: { isEnabled in model.setLaunchAtLoginEnabled(isEnabled) }
+        )
     }
 
     private var policyPanel: some View {
