@@ -15,7 +15,7 @@ struct NetworkPolicy: Equatable, Sendable {
     }
 
     init(settings: GuardSettings) {
-        usesRuleStack = !settings.rules.isEmpty
+        usesRuleStack = settings.rules.contains { $0.isEnabled }
         rules = settings.rules.filter { $0.isEnabled && !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         allowedIPs = Set(settings.allowedIPs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         allowedCIDRs = Set(settings.allowedCIDRs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })

@@ -19,7 +19,11 @@ struct SettingsView: View {
                 case .applications: ApplicationPickerView(model: model)
                 case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
                 case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
-                case .preferences: PreferencesSettingsView(settings: $model.settings, identity: model.identity)
+                case .preferences: PreferencesSettingsView(
+                    settings: $model.settings,
+                    identity: model.identity,
+                    status: model.status
+                )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -184,17 +188,6 @@ private struct OverviewDashboardView: View {
     private var policyPanel: some View {
         DashboardPanel(title: "保护策略", subtitle: policySummary) {
             VStack(alignment: .leading, spacing: 16) {
-                Toggle(isOn: protectionBinding) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("启用出口保护").font(.system(size: 14, weight: .semibold))
-                        Text(model.settings.hasPolicyConstraints ? "异常时按规则处置" : "请先添加保护规则")
-                            .font(.caption).foregroundStyle(.white.opacity(0.46))
-                    }
-                }
-                .toggleStyle(.switch)
-                .disabled(!model.settings.hasPolicyConstraints)
-
-                Divider().overlay(.white.opacity(0.08))
                 Label("每 \(Int(model.settings.checkInterval)) 秒自动检测", systemImage: "timer")
                 Label("连续 \(model.settings.violationThreshold) 次异常后触发", systemImage: "shield.lefthalf.filled")
                 Label("\(configuredRuleCount) 条允许条件", systemImage: "checklist.checked")
@@ -245,13 +238,6 @@ private struct OverviewDashboardView: View {
             return model.settings.rules.filter(\.isEnabled).count
         }
         return model.settings.allowedIPs.count + model.settings.allowedCIDRs.count + model.settings.allowedCountryCodes.count + model.settings.allowedASNs.count
-    }
-
-    private var protectionBinding: Binding<Bool> {
-        Binding(
-            get: { model.settings.isProtectionActive },
-            set: { model.settings.setProtectionActive($0) }
-        )
     }
 
     private var policySummary: String {
@@ -415,6 +401,16 @@ private struct RulesSettingsView: View {
                     .foregroundStyle(.white.opacity(0.52))
             }
             Spacer()
+            Button(action: toggleAllRules) {
+                Label(allRulesEnabled ? "全部关闭" : "全部开启", systemImage: allRulesEnabled ? "pause.fill" : "play.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .frame(height: 40)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .disabled(settings.rules.isEmpty)
             Label(
                 settings.isProtectionActive ? "保护已启用" : "保护未启用",
                 systemImage: settings.isProtectionActive ? "shield.checkered" : "shield.slash"
@@ -435,6 +431,16 @@ private struct RulesSettingsView: View {
                     )
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    private var allRulesEnabled: Bool {
+        !settings.rules.isEmpty && settings.rules.allSatisfy { $0.isEnabled }
+    }
+
+    private func toggleAllRules() {
+        withAnimation(.snappy(duration: 0.24)) {
+            settings.setProtectionActive(!allRulesEnabled)
         }
     }
 
@@ -857,6 +863,7 @@ private struct RuleApplicationIcon: View {
 private struct PreferencesSettingsView: View {
     @Binding var settings: GuardSettings
     let identity: ExitIdentity?
+    let status: GuardDisplayStatus
 
     var body: some View {
         ZStack {
@@ -944,8 +951,8 @@ private struct PreferencesSettingsView: View {
 
                     DashboardPanel(title: "展示预览", subtitle: "顶部状态栏将按照以下组合显示") {
                         HStack(spacing: 10) {
-                            Image(systemName: "shield.checkered")
-                                .foregroundStyle(.green)
+                            EgressStatusGlyph(status: status, size: 17, presentation: .menuBar)
+                                .frame(width: 20, height: 20)
                             if let preview = menuBarPreview {
                                 Text(preview)
                                     .font(.system(size: 14, weight: .semibold, design: .monospaced))

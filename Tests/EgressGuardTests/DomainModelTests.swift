@@ -45,6 +45,21 @@ struct DomainModelTests {
         #expect(GuardSettings.defaults.showsCountryFlagInMenuBar == false)
         #expect(GuardSettings.defaults.checkIntervalUnit == .seconds)
         #expect(GuardSettings.defaults.menuBarCountryDisplayMode == .hidden)
+        #expect(GuardSettings.defaults.rules.count == 3)
+        #expect(GuardSettings.defaults.rules.allSatisfy { !$0.isEnabled })
+        #expect(GuardSettings.defaults.rules.map(\.condition) == [.ip, .cidr, .country])
+        #expect(GuardSettings.defaults.rules.map(\.value) == ["203.0.113.10", "203.0.113.0/24", "SG"])
+    }
+
+    @Test("Protection can enable or disable every visual rule at once")
+    func batchProtectionToggle() {
+        var settings = GuardSettings.defaults
+
+        settings.setProtectionActive(true)
+        #expect(settings.rules.allSatisfy { $0.isEnabled })
+
+        settings.setProtectionActive(false)
+        #expect(settings.rules.allSatisfy { !$0.isEnabled })
     }
 
     @Test("Refresh interval accepts user values in seconds or minutes")
@@ -64,6 +79,7 @@ struct DomainModelTests {
     @Test("New protection rules are inserted at the top")
     func newRulesAreNewestFirst() {
         var settings = GuardSettings.defaults
+        settings.rules = []
         let older = GuardRule(condition: .ip, value: "203.0.113.10")
         let newer = GuardRule(condition: .country, value: "SG")
 

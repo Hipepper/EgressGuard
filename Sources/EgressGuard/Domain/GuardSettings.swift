@@ -28,7 +28,11 @@ struct GuardSettings: Codable, Equatable, Sendable {
         allowedCIDRs: [],
         allowedCountryCodes: [],
         allowedASNs: [],
-        rules: [],
+        rules: [
+            GuardRule(condition: .ip, value: "203.0.113.10", isEnabled: false),
+            GuardRule(condition: .cidr, value: "203.0.113.0/24", isEnabled: false),
+            GuardRule(condition: .country, value: "SG", isEnabled: false)
+        ],
         menuBarIPDisplayMode: .iconOnly,
         showsCountryFlagInMenuBar: false,
         checkIntervalUnit: .seconds,
