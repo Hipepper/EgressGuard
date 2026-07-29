@@ -26,6 +26,26 @@ struct PolicyEvaluatorTests {
         #expect(result.missingFields == [.asn])
     }
 
+    @Test("Negative country rule rejects a nonmatching country")
+    func negativeCountryRule() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(comparison: .isNot, condition: .country, value: "US")]
+
+        let result = PolicyEvaluator().evaluate(identity(country: "SG"), against: NetworkPolicy(settings: settings))
+
+        #expect(result.decision == .violated)
+    }
+
+    @Test("Disabled rule is excluded from evaluation")
+    func disabledRule() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(condition: .ip, value: "198.51.100.1", isEnabled: false)]
+
+        let result = PolicyEvaluator().evaluate(identity(), against: NetworkPolicy(settings: settings))
+
+        #expect(result.decision == .indeterminate)
+    }
+
     @Test("IPv6 CIDR boundaries are supported")
     func ipv6CIDR() {
         let network = try? IPNetwork("2001:db8::/32")

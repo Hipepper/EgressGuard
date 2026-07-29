@@ -10,6 +10,10 @@ struct PolicyEvaluator: Sendable {
             )
         }
 
+        if policy.usesRuleStack {
+            return evaluateRuleStack(identity, rules: policy.rules)
+        }
+
         var violations: [Violation] = []
         var missingFields: [IdentityField] = []
 
@@ -70,4 +74,60 @@ struct PolicyEvaluator: Sendable {
         }
         return PolicyEvaluation(decision: decision, violations: violations, missingFields: missingFields)
     }
+    private func evaluateRuleStack(_ identity: ExitIdentity, rules: [GuardRule]) -> PolicyEvaluation {
+        guard !rules.isEmpty else {
+            return PolicyEvaluation(
+                decision: .indeterminate,
+                violations: [.invalidPolicy(reason: "至少需要启用一条完整规则")],
+                missingFields: []
+            )
+        }
+
+        var violations: [Violation] = []
+        var missingFields: [IdentityField] = []
+
+        for rule in rules {
+            let matches: Bool
+            switch rule.condition {
+            case .ip:
+                guard IPNetwork.isValidAddress(rule.value) else {
+                    return invalidRule("IP 格式错误：\(rule.value)")
+                }
+                matches = identity.ip == rule.value
+            case .cidr:
+                guard let network = try? IPNetwork(rule.value) else {
+                    return invalidRule("CIDR 格式错误：\(rule.value)")
+                }
+                matches = network.contains(identity.ip)
+            case .country:
+                guard let country = identity.countryCode?.uppercased() else {
+                    missingFields.append(.country)
+                    continue
+                }
+                matches = country == rule.value.uppercased()
+            }
+
+            let isTriggered = rule.comparison == .isEqual ? matches : !matches
+            if isTriggered {
+                let appName = rule.application?.displayName ?? "所选应用"
+                violations.append(.ruleTriggered(
+                    description: "规则已触发：\(rule.comparison.title) \(rule.condition.title) \(rule.value)，\(rule.action.title) \(appName)"
+                ))
+            }
+        }
+
+        if !missingFields.isEmpty {
+            return PolicyEvaluation(decision: .indeterminate, violations: violations, missingFields: Array(Set(missingFields)))
+        }
+        return PolicyEvaluation(
+            decision: violations.isEmpty ? .allowed : .violated,
+            violations: violations,
+            missingFields: []
+        )
+    }
+
+    private func invalidRule(_ reason: String) -> PolicyEvaluation {
+        PolicyEvaluation(decision: .indeterminate, violations: [.invalidPolicy(reason: reason)], missingFields: [])
+    }
+
 }

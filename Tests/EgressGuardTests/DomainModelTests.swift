@@ -45,6 +45,26 @@ struct DomainModelTests {
         #expect(GuardSettings.defaults.showsCountryFlagInMenuBar == false)
     }
 
+    @Test("New protection rules are inserted at the top")
+    func newRulesAreNewestFirst() {
+        var settings = GuardSettings.defaults
+        let older = GuardRule(condition: .ip, value: "203.0.113.10")
+        let newer = GuardRule(condition: .country, value: "SG")
+
+        settings.addRule(older)
+        settings.addRule(newer)
+
+        #expect(settings.rules.map(\.id) == [newer.id, older.id])
+    }
+
+    @Test("Disabled rules do not enable protection")
+    func disabledRulesAreIgnored() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(condition: .ip, value: "203.0.113.10", isEnabled: false)]
+
+        #expect(settings.hasPolicyConstraints == false)
+    }
+
     @Test("Legacy settings decode with safe menu bar defaults")
     func legacySettingsDecode() throws {
         let json = #"""
@@ -66,5 +86,8 @@ struct DomainModelTests {
         #expect(settings.allowedCountryCodes == ["SG"])
         #expect(settings.menuBarIPDisplayMode == .iconOnly)
         #expect(settings.showsCountryFlagInMenuBar == false)
+        #expect(settings.rules.count == 1)
+        #expect(settings.rules.first?.condition == .country)
+        #expect(settings.rules.first?.value == "SG")
     }
 }

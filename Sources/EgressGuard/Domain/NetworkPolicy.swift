@@ -5,13 +5,18 @@ struct NetworkPolicy: Equatable, Sendable {
     var allowedCIDRs: Set<String>
     var allowedCountryCodes: Set<String>
     var allowedASNs: Set<String>
+    var rules: [GuardRule]
+    var usesRuleStack: Bool
 
     var hasConstraints: Bool {
-        !allowedIPs.isEmpty || !allowedCIDRs.isEmpty ||
+        if usesRuleStack { return !rules.isEmpty }
+        return !allowedIPs.isEmpty || !allowedCIDRs.isEmpty ||
             !allowedCountryCodes.isEmpty || !allowedASNs.isEmpty
     }
 
     init(settings: GuardSettings) {
+        usesRuleStack = !settings.rules.isEmpty
+        rules = settings.rules.filter { $0.isEnabled && !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         allowedIPs = Set(settings.allowedIPs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         allowedCIDRs = Set(settings.allowedCIDRs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         allowedCountryCodes = Set(settings.allowedCountryCodes.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }.filter { !$0.isEmpty })

@@ -22,6 +22,7 @@ enum Violation: Equatable, Sendable {
     case countryNotAllowed(actual: String)
     case asnNotAllowed(actual: String)
     case invalidPolicy(reason: String)
+    case ruleTriggered(description: String)
 
     var description: String {
         switch self {
@@ -29,6 +30,7 @@ enum Violation: Equatable, Sendable {
         case let .countryNotAllowed(actual): "国家/地区 \(actual) 不在允许列表内"
         case let .asnNotAllowed(actual): "ASN \(actual) 不在允许列表内"
         case let .invalidPolicy(reason): "规则无效：\(reason)"
+        case let .ruleTriggered(description): description
         }
     }
 }

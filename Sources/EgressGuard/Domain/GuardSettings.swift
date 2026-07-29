@@ -11,6 +11,7 @@ struct GuardSettings: Codable, Equatable, Sendable {
     var allowedCIDRs: [String]
     var allowedCountryCodes: [String]
     var allowedASNs: [String]
+    var rules: [GuardRule]
     var menuBarIPDisplayMode: MenuBarIPDisplayMode
     var showsCountryFlagInMenuBar: Bool
 
@@ -25,12 +26,17 @@ struct GuardSettings: Codable, Equatable, Sendable {
         allowedCIDRs: [],
         allowedCountryCodes: [],
         allowedASNs: [],
+        rules: [],
         menuBarIPDisplayMode: .iconOnly,
         showsCountryFlagInMenuBar: false
     )
 
     var hasPolicyConstraints: Bool {
         NetworkPolicy(settings: self).hasConstraints
+    }
+
+    mutating func addRule(_ rule: GuardRule = GuardRule()) {
+        rules.insert(rule, at: 0)
     }
 }
 
@@ -62,7 +68,7 @@ extension GuardSettings {
     private enum CodingKeys: String, CodingKey {
         case isProtectionEnabled, checkInterval, requestTimeout
         case violationThreshold, recoveryThreshold, startupGracePeriod
-        case allowedIPs, allowedCIDRs, allowedCountryCodes, allowedASNs
+        case allowedIPs, allowedCIDRs, allowedCountryCodes, allowedASNs, rules
         case menuBarIPDisplayMode, showsCountryFlagInMenuBar
     }
 
@@ -79,8 +85,25 @@ extension GuardSettings {
             allowedCIDRs: try container.decode([String].self, forKey: .allowedCIDRs),
             allowedCountryCodes: try container.decode([String].self, forKey: .allowedCountryCodes),
             allowedASNs: try container.decode([String].self, forKey: .allowedASNs),
+            rules: [],
             menuBarIPDisplayMode: try container.decodeIfPresent(MenuBarIPDisplayMode.self, forKey: .menuBarIPDisplayMode) ?? .iconOnly,
             showsCountryFlagInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsCountryFlagInMenuBar) ?? false
         )
+        if let decodedRules = try container.decodeIfPresent([GuardRule].self, forKey: .rules) {
+            rules = decodedRules
+        } else {
+            rules = Self.migrateLegacyRules(
+                ips: allowedIPs,
+                cidrs: allowedCIDRs,
+                countries: allowedCountryCodes
+            )
+        }
+    }
+
+    private static func migrateLegacyRules(ips: [String], cidrs: [String], countries: [String]) -> [GuardRule] {
+        let ipRules = ips.map { GuardRule(comparison: .isNot, condition: .ip, value: $0) }
+        let cidrRules = cidrs.map { GuardRule(comparison: .isNot, condition: .cidr, value: $0) }
+        let countryRules = countries.map { GuardRule(comparison: .isNot, condition: .country, value: $0) }
+        return ipRules + cidrRules + countryRules
     }
 }

@@ -104,7 +104,8 @@ struct ProviderTests {
     @Test("Dedicated IPv6 provider parses a reachable IPv6 address")
     func ipv6AddressParsing() async throws {
         let provider = IPv6AddressProvider(
-            loader: StubLoader(statusCode: 200, body: "2001:db8::42\n")
+            loader: StubLoader(statusCode: 200, body: "2001:db8::42\n"),
+            resolver: StubIPv6EndpointResolver(hasUsableAddress: true)
         )
 
         let address = try await provider.fetchAddress()
@@ -112,10 +113,37 @@ struct ProviderTests {
         #expect(address == "2001:db8::42")
     }
 
+    @Test("IPv4-mapped DNS records are not treated as native IPv6")
+    func ipv4MappedAddressIsRejected() {
+        let mapped: [UInt8] = Array(repeating: 0, count: 10) + [0xff, 0xff, 198, 18, 0, 49]
+
+        #expect(!DNSIPv6EndpointResolver.isUsableNativeIPv6(mapped))
+    }
+
+    @Test("Global IPv6 DNS records are accepted")
+    func globalIPv6AddressIsAccepted() {
+        let global: [UInt8] = [0x24, 0x04, 0x68, 0x00] + Array(repeating: 0, count: 12)
+
+        #expect(DNSIPv6EndpointResolver.isUsableNativeIPv6(global))
+    }
+
+    @Test("Dedicated IPv6 provider skips HTTPS when DNS has no native IPv6 endpoint")
+    func ipv6AddressSkipsFakeIPv6Endpoint() async {
+        let provider = IPv6AddressProvider(
+            loader: UnexpectedLoader(),
+            resolver: StubIPv6EndpointResolver(hasUsableAddress: false)
+        )
+
+        await #expect(throws: ExitIPProviderError.ipv6Unavailable) {
+            try await provider.fetchAddress()
+        }
+    }
+
     @Test("Dedicated IPv6 provider rejects IPv4 responses")
     func ipv6AddressRejectsIPv4() async {
         let provider = IPv6AddressProvider(
-            loader: StubLoader(statusCode: 200, body: "203.0.113.10")
+            loader: StubLoader(statusCode: 200, body: "203.0.113.10"),
+            resolver: StubIPv6EndpointResolver(hasUsableAddress: true)
         )
 
         await #expect(throws: ExitIPProviderError.malformedPayload) {
@@ -157,5 +185,20 @@ private struct StubProvider: ExitIPProvider {
 
     func fetchIdentity() async throws -> ExitIdentity {
         try result.get()
+    }
+}
+
+private struct StubIPv6EndpointResolver: IPv6EndpointResolving {
+    let hasUsableAddress: Bool
+
+    func hasUsableIPv6Address(for host: String) -> Bool {
+        hasUsableAddress
+    }
+}
+
+private struct UnexpectedLoader: HTTPDataLoader {
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        Issue.record("HTTP loader must not run without a native IPv6 endpoint")
+        throw ExitIPProviderError.invalidResponse
     }
 }

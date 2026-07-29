@@ -23,7 +23,7 @@ struct EgressGuardApp: App {
 
         Settings {
             SettingsView(model: model)
-                .frame(minWidth: 780, minHeight: 560)
+                .frame(minWidth: 980, idealWidth: 1120, minHeight: 680, idealHeight: 760)
         }
     }
 }
