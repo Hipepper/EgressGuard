@@ -209,3 +209,10 @@ enum ContinuousSelection {
         return min(max(Int(position / itemExtent), 0), itemCount - 1)
     }
 }
+
+enum SettingsLayoutMetrics {
+    static let selectionAnimationDuration = 0.16
+    static let themeCommitDelay = 0.10
+    static let overviewHeaderHeight: CGFloat = 170
+    static let contentCornerRadius: CGFloat = 22
+}

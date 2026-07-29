@@ -32,6 +32,14 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(DashboardPalette.canvas)
             .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: SettingsLayoutMetrics.contentCornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: SettingsLayoutMetrics.contentCornerRadius, style: .continuous)
+                    .stroke(DashboardPalette.border, lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.13), radius: 18, x: -3, y: 3)
+            .padding(.vertical, 8)
+            .padding(.trailing, 8)
         }
         .foregroundStyle(DashboardPalette.text)
         .background(DashboardPalette.sidebar)
@@ -43,7 +51,16 @@ private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection?
     let isProtectionActive: Bool
     @Binding var theme: InterfaceTheme
+    @State private var visualTheme: InterfaceTheme
+    @State private var themeCommitTask: Task<Void, Never>?
     @Namespace private var selectionAnimation
+
+    init(selection: Binding<SettingsSection?>, isProtectionActive: Bool, theme: Binding<InterfaceTheme>) {
+        _selection = selection
+        self.isProtectionActive = isProtectionActive
+        _theme = theme
+        _visualTheme = State(initialValue: theme.wrappedValue)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -141,9 +158,9 @@ private struct SettingsSidebar: View {
                         .font(.system(size: 10, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 32)
-                        .foregroundStyle(theme == option ? Color.white : DashboardPalette.text.opacity(0.62))
+                        .foregroundStyle(visualTheme == option ? Color.white : DashboardPalette.text.opacity(0.62))
                         .background {
-                            if theme == option {
+                            if visualTheme == option {
                                 Capsule()
                                     .fill(LinearGradient(
                                         colors: [DashboardPalette.pink, DashboardPalette.blue],
@@ -179,16 +196,27 @@ private struct SettingsSidebar: View {
         .padding(3)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(DashboardPalette.border))
+        .onDisappear { themeCommitTask?.cancel() }
     }
 
     private func selectSection(_ section: SettingsSection) {
         guard selection != section else { return }
-        withAnimation(.easeOut(duration: 0.12)) { selection = section }
+        withAnimation(.smooth(duration: SettingsLayoutMetrics.selectionAnimationDuration)) {
+            selection = section
+        }
     }
 
     private func selectTheme(_ option: InterfaceTheme) {
-        guard theme != option else { return }
-        withAnimation(.easeOut(duration: 0.10)) { theme = option }
+        guard visualTheme != option else { return }
+        withAnimation(.smooth(duration: SettingsLayoutMetrics.selectionAnimationDuration)) {
+            visualTheme = option
+        }
+        themeCommitTask?.cancel()
+        themeCommitTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(SettingsLayoutMetrics.themeCommitDelay))
+            guard !Task.isCancelled else { return }
+            theme = option
+        }
     }
 }
 
@@ -203,21 +231,22 @@ private extension InterfaceTheme {
 }
 
 private struct OverviewDashboardView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var model: AppModel
 
     var body: some View {
         ZStack(alignment: .top) {
             DashboardPalette.canvas
             LinearGradient(
-                colors: [DashboardPalette.coral, DashboardPalette.pink, DashboardPalette.blue],
+                colors: overviewHeaderColors,
                 startPoint: .leading,
                 endPoint: .trailing
             )
-            .frame(height: 210)
+            .frame(height: SettingsLayoutMetrics.overviewHeaderHeight)
             .overlay(alignment: .trailing) {
                 Image(systemName: "network")
-                    .font(.system(size: 170, weight: .ultraLight))
-                    .foregroundStyle(.white.opacity(0.08))
+                    .font(.system(size: 125, weight: .ultraLight))
+                    .foregroundStyle(.white.opacity(colorScheme == .light ? 0.16 : 0.08))
                     .padding(.trailing, 34)
             }
 
@@ -258,7 +287,18 @@ private struct OverviewDashboardView: View {
             .buttonStyle(.plain)
             .disabled(model.status == .checking)
         }
-        .frame(height: 98, alignment: .top)
+        .frame(height: 72, alignment: .top)
+    }
+
+    private var overviewHeaderColors: [Color] {
+        if colorScheme == .light {
+            return [
+                Color(red: 0.34, green: 0.82, blue: 0.76),
+                Color(red: 0.27, green: 0.69, blue: 0.91),
+                Color(red: 0.38, green: 0.54, blue: 0.94)
+            ]
+        }
+        return [DashboardPalette.coral, DashboardPalette.pink, DashboardPalette.blue]
     }
 
     private var metricCards: some View {

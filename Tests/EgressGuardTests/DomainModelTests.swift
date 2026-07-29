@@ -103,6 +103,14 @@ struct DomainModelTests {
         #expect(ContinuousSelection.index(position: 10, totalExtent: 0, itemCount: 3) == nil)
     }
 
+    @Test("Settings layout keeps interactions quick and the overview compact")
+    func settingsLayoutMetrics() {
+        #expect(SettingsLayoutMetrics.selectionAnimationDuration <= 0.18)
+        #expect(SettingsLayoutMetrics.themeCommitDelay <= 0.12)
+        #expect(SettingsLayoutMetrics.overviewHeaderHeight == 170)
+        #expect(SettingsLayoutMetrics.contentCornerRadius == 22)
+    }
+
     @Test("Protection can enable or disable every visual rule at once")
     func batchProtectionToggle() {
         var settings = GuardSettings.defaults
