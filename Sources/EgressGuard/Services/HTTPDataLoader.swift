@@ -26,9 +26,19 @@ struct FreshHTTPDataLoader: HTTPDataLoader {
 }
 
 struct DirectHTTPDataLoader: HTTPDataLoader {
+    static var disabledProxyConfiguration: [AnyHashable: Any] {
+        [
+            "HTTPEnable": 0,
+            "HTTPSEnable": 0,
+            "SOCKSEnable": 0,
+            "ProxyAutoConfigEnable": 0,
+            "ProxyAutoDiscoveryEnable": 0
+        ]
+    }
+
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.connectionProxyDictionary = [:]
+        configuration.connectionProxyDictionary = Self.disabledProxyConfiguration
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         configuration.urlCache = nil
         let session = URLSession(configuration: configuration)

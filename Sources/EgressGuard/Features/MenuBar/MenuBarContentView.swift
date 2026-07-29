@@ -85,7 +85,7 @@ private struct EgressStatusCard: View {
                         .font(.system(size: 15, weight: .semibold))
                     VStack(alignment: .leading, spacing: 3) {
                         ExitAddressLine(label: "代理", identity: model.identity)
-                        ExitAddressLine(label: "直连", identity: model.directIdentity)
+                        ExitAddressLine(label: "无代理", identity: model.directIdentity)
                     }
                 }
                 Spacer()

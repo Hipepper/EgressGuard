@@ -19,6 +19,7 @@ struct SettingsView: View {
                 case .applications: ApplicationPickerView(model: model)
                 case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
                 case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
+                case .preferences: PreferencesSettingsView(settings: $model.settings, identity: model.identity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -32,6 +33,7 @@ struct SettingsView: View {
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection?
     let isProtectionActive: Bool
+    @Namespace private var selectionAnimation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -48,7 +50,11 @@ private struct SettingsSidebar: View {
 
             VStack(spacing: 5) {
                 ForEach(SettingsSection.allCases) { section in
-                    Button { selection = section } label: {
+                    Button {
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
+                            selection = section
+                        }
+                    } label: {
                         HStack(spacing: 11) {
                             Image(systemName: section.symbolName)
                                 .font(.system(size: 14, weight: .medium)).frame(width: 20)
@@ -66,6 +72,7 @@ private struct SettingsSidebar: View {
                                         startPoint: .leading, endPoint: .trailing
                                     ))
                                     .shadow(color: DashboardPalette.pink.opacity(0.24), radius: 12, y: 5)
+                                    .matchedGeometryEffect(id: "sidebar-selection", in: selectionAnimation)
                             }
                         }
                         .contentShape(Rectangle())
@@ -167,7 +174,7 @@ private struct OverviewDashboardView: View {
         DashboardPanel(title: "当前出口身份", subtitle: identitySubtitle) {
             VStack(spacing: 0) {
                 IdentityRow(icon: "arrow.triangle.branch", title: "代理出口 IPv4", value: model.identity?.ipv4Address ?? "未检测到", tint: DashboardPalette.coral)
-                IdentityRow(icon: "point.3.filled.connected.trianglepath.dotted", title: "直连出口 IPv4", value: model.directIdentity?.ipv4Address ?? "未检测到", tint: DashboardPalette.pink)
+                IdentityRow(icon: "point.3.filled.connected.trianglepath.dotted", title: "无系统代理 IPv4", value: model.directIdentity?.ipv4Address ?? "未检测到", tint: DashboardPalette.pink)
                 IdentityRow(icon: "building.2", title: "代理网络归属", value: networkOwner, tint: DashboardPalette.purple)
                 IdentityRow(icon: "mappin.and.ellipse", title: "代理国家或地区", value: countryDescription, tint: DashboardPalette.blue, showsDivider: false)
             }
@@ -216,7 +223,9 @@ private struct OverviewDashboardView: View {
 
     private var identitySubtitle: String {
         guard let identity = model.identity else { return "尚未获得检测结果" }
-        let state = model.hasSplitEgress ? "检测到代理与直连分流" : "两个出口视角一致"
+        let state = model.hasSplitEgress
+            ? "检测到代理与无代理请求分流"
+            : "两个请求出口一致；VPN/TUN 可能隐藏物理直连"
         return "\(state) · \(identity.checkedAt.formatted(date: .omitted, time: .shortened)) 更新"
     }
 
@@ -401,7 +410,7 @@ private struct RulesSettingsView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("保护规则")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                Text("按代理、直连或任一出口判断条件；满足时执行指定的应用动作。")
+                Text("按代理、无代理或任一出口判断条件；满足时执行指定的应用动作。")
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.52))
             }
@@ -842,6 +851,174 @@ private struct RuleApplicationIcon: View {
             else { Image(systemName: "app.fill").resizable() }
         }
         .scaledToFit()
+    }
+}
+
+private struct PreferencesSettingsView: View {
+    @Binding var settings: GuardSettings
+    let identity: ExitIdentity?
+
+    var body: some View {
+        ZStack {
+            DashboardPalette.canvas.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("设置")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                        Text("配置自动检测频率和 macOS 顶部状态栏的展示内容。")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.52))
+                    }
+
+                    DashboardPanel(title: "自动检测", subtitle: "网络状态变化时仍会立即检测，此处作为周期兜底") {
+                        HStack(spacing: 14) {
+                            Image(systemName: "timer")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(DashboardPalette.coral)
+                                .frame(width: 38, height: 38)
+                                .background(DashboardPalette.coral.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("自动刷新间隔").font(.system(size: 14, weight: .semibold))
+                                Text("最短 1 秒，修改后立即应用").font(.caption).foregroundStyle(.white.opacity(0.42))
+                            }
+                            Spacer()
+                            TextField("30", value: intervalValue, format: .number.precision(.fractionLength(0...2)))
+                                .textFieldStyle(.plain)
+                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                .multilineTextAlignment(.trailing)
+                                .padding(.horizontal, 12)
+                                .frame(width: 108, height: 38)
+                                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
+                            Picker("单位", selection: $settings.checkIntervalUnit) {
+                                ForEach(RefreshIntervalUnit.allCases) { unit in
+                                    Text(unit.title).tag(unit)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 92)
+                        }
+                    }
+
+                    DashboardPanel(title: "顶部状态栏展示", subtitle: "控制菜单栏图标右侧显示的出口身份信息") {
+                        VStack(spacing: 0) {
+                            preferenceRow(
+                                icon: "network",
+                                title: "显示当前出网 IP",
+                                subtitle: "关闭后仍保留 EgressGuard 状态图标"
+                            ) {
+                                Toggle("", isOn: showsIPBinding).labelsHidden().toggleStyle(.switch)
+                            }
+
+                            Divider().overlay(.white.opacity(0.08))
+
+                            preferenceRow(
+                                icon: "textformat.abc",
+                                title: "IP 展示方式",
+                                subtitle: "完整地址或前两段缩写"
+                            ) {
+                                Picker("IP 展示方式", selection: ipDisplayBinding) {
+                                    Text("完整 IPv4").tag(MenuBarIPDisplayMode.fullIPv4)
+                                    Text("前两段缩写").tag(MenuBarIPDisplayMode.abbreviatedIPv4)
+                                }
+                                .labelsHidden()
+                                .disabled(!settings.showsIPInMenuBar)
+                            }
+
+                            Divider().overlay(.white.opacity(0.08))
+
+                            preferenceRow(
+                                icon: "flag.fill",
+                                title: "国家或地区",
+                                subtitle: "可隐藏，或使用国旗、两字母代码展示"
+                            ) {
+                                Picker("国家或地区", selection: $settings.menuBarCountryDisplayMode) {
+                                    ForEach(MenuBarCountryDisplayMode.allCases) { mode in
+                                        Text(mode.title).tag(mode)
+                                    }
+                                }
+                                .labelsHidden()
+                            }
+                        }
+                    }
+
+                    DashboardPanel(title: "展示预览", subtitle: "顶部状态栏将按照以下组合显示") {
+                        HStack(spacing: 10) {
+                            Image(systemName: "shield.checkered")
+                                .foregroundStyle(.green)
+                            if let preview = menuBarPreview {
+                                Text(preview)
+                                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            } else {
+                                Text("仅显示状态图标").foregroundStyle(.white.opacity(0.48))
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(height: 48)
+                        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 11))
+                    }
+                }
+                .padding(.horizontal, 34)
+                .padding(.top, 42)
+                .padding(.bottom, 34)
+            }
+        }
+    }
+
+    private var intervalValue: Binding<Double> {
+        Binding(
+            get: { settings.checkIntervalValue },
+            set: { settings.setCheckInterval(value: $0, unit: settings.checkIntervalUnit) }
+        )
+    }
+
+    private var showsIPBinding: Binding<Bool> {
+        Binding(get: { settings.showsIPInMenuBar }, set: { settings.showsIPInMenuBar = $0 })
+    }
+
+    private var ipDisplayBinding: Binding<MenuBarIPDisplayMode> {
+        Binding(
+            get: { settings.menuBarIPDisplayMode == .abbreviatedIPv4 ? .abbreviatedIPv4 : .fullIPv4 },
+            set: { settings.menuBarIPDisplayMode = $0 }
+        )
+    }
+
+    private var menuBarPreview: String? {
+        let previewIP = identity?.ipv4Address ?? "203.0.113.10"
+        let previewCountry = identity?.countryCode?.uppercased() ?? "SG"
+        var parts: [String] = []
+        switch settings.menuBarCountryDisplayMode {
+        case .hidden: break
+        case .flag: parts.append(identity?.countryFlag ?? "🇸🇬")
+        case .code: parts.append(previewCountry)
+        }
+        switch settings.menuBarIPDisplayMode {
+        case .iconOnly: break
+        case .fullIPv4: parts.append(previewIP)
+        case .abbreviatedIPv4: parts.append(previewIP.abbreviatedIPv4)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    private func preferenceRow<Accessory: View>(
+        icon: String,
+        title: String,
+        subtitle: String,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        HStack(spacing: 13) {
+            Image(systemName: icon)
+                .foregroundStyle(DashboardPalette.purple)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                Text(subtitle).font(.caption).foregroundStyle(.white.opacity(0.42))
+            }
+            Spacer()
+            accessory()
+        }
+        .frame(minHeight: 58)
     }
 }
 

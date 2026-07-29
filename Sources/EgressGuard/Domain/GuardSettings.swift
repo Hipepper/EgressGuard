@@ -14,6 +14,8 @@ struct GuardSettings: Codable, Equatable, Sendable {
     var rules: [GuardRule]
     var menuBarIPDisplayMode: MenuBarIPDisplayMode
     var showsCountryFlagInMenuBar: Bool
+    var checkIntervalUnit: RefreshIntervalUnit
+    var menuBarCountryDisplayMode: MenuBarCountryDisplayMode
 
     static let defaults = GuardSettings(
         isProtectionEnabled: false,
@@ -28,7 +30,9 @@ struct GuardSettings: Codable, Equatable, Sendable {
         allowedASNs: [],
         rules: [],
         menuBarIPDisplayMode: .iconOnly,
-        showsCountryFlagInMenuBar: false
+        showsCountryFlagInMenuBar: false,
+        checkIntervalUnit: .seconds,
+        menuBarCountryDisplayMode: .hidden
     )
 
     var hasPolicyConstraints: Bool {
@@ -55,6 +59,44 @@ struct GuardSettings: Codable, Equatable, Sendable {
 
     mutating func addRule(_ rule: GuardRule = GuardRule()) {
         rules.insert(rule, at: 0)
+    }
+
+    var checkIntervalValue: Double {
+        checkInterval / checkIntervalUnit.secondsMultiplier
+    }
+
+    mutating func setCheckInterval(value: Double, unit: RefreshIntervalUnit) {
+        checkIntervalUnit = unit
+        checkInterval = max(1, value * unit.secondsMultiplier)
+    }
+
+    var showsIPInMenuBar: Bool {
+        get { menuBarIPDisplayMode != .iconOnly }
+        set { menuBarIPDisplayMode = newValue ? .fullIPv4 : .iconOnly }
+    }
+}
+
+enum RefreshIntervalUnit: String, Codable, CaseIterable, Identifiable, Sendable {
+    case seconds
+    case minutes
+
+    var id: Self { self }
+    var title: String { self == .seconds ? "秒" : "分钟" }
+    var secondsMultiplier: Double { self == .seconds ? 1 : 60 }
+}
+
+enum MenuBarCountryDisplayMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case hidden
+    case flag
+    case code
+
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .hidden: "不显示"
+        case .flag: "国旗"
+        case .code: "国家/地区缩写"
+        }
     }
 }
 
@@ -88,6 +130,7 @@ extension GuardSettings {
         case violationThreshold, recoveryThreshold, startupGracePeriod
         case allowedIPs, allowedCIDRs, allowedCountryCodes, allowedASNs, rules
         case menuBarIPDisplayMode, showsCountryFlagInMenuBar
+        case checkIntervalUnit, menuBarCountryDisplayMode
     }
 
     init(from decoder: Decoder) throws {
@@ -105,8 +148,12 @@ extension GuardSettings {
             allowedASNs: try container.decode([String].self, forKey: .allowedASNs),
             rules: [],
             menuBarIPDisplayMode: try container.decodeIfPresent(MenuBarIPDisplayMode.self, forKey: .menuBarIPDisplayMode) ?? .iconOnly,
-            showsCountryFlagInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsCountryFlagInMenuBar) ?? false
+            showsCountryFlagInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsCountryFlagInMenuBar) ?? false,
+            checkIntervalUnit: try container.decodeIfPresent(RefreshIntervalUnit.self, forKey: .checkIntervalUnit) ?? .seconds,
+            menuBarCountryDisplayMode: .hidden
         )
+        menuBarCountryDisplayMode = try container.decodeIfPresent(MenuBarCountryDisplayMode.self, forKey: .menuBarCountryDisplayMode)
+            ?? (showsCountryFlagInMenuBar ? .flag : .hidden)
         if let decodedRules = try container.decodeIfPresent([GuardRule].self, forKey: .rules) {
             rules = decodedRules
         } else {

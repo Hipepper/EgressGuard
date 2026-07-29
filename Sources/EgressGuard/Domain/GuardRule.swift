@@ -10,7 +10,7 @@ struct GuardRule: Codable, Equatable, Identifiable, Sendable {
         var title: String {
             switch self {
             case .proxy: "代理出口"
-            case .direct: "直连出口"
+            case .direct: "无代理出口"
             case .any: "任一出口"
             }
         }

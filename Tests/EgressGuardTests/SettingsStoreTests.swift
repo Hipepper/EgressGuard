@@ -14,6 +14,9 @@ struct SettingsStoreTests {
         var settings = GuardSettings.defaults
         settings.allowedCountryCodes = ["SG"]
         settings.isProtectionEnabled = true
+        settings.setCheckInterval(value: 2, unit: .minutes)
+        settings.menuBarIPDisplayMode = .abbreviatedIPv4
+        settings.menuBarCountryDisplayMode = .code
         let application = ProtectedApplication(
             bundleIdentifier: "com.example.App",
             displayName: "Example",

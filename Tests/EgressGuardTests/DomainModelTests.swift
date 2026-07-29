@@ -43,6 +43,22 @@ struct DomainModelTests {
         #expect(GuardSettings.defaults.isProtectionEnabled == false)
         #expect(GuardSettings.defaults.menuBarIPDisplayMode == .iconOnly)
         #expect(GuardSettings.defaults.showsCountryFlagInMenuBar == false)
+        #expect(GuardSettings.defaults.checkIntervalUnit == .seconds)
+        #expect(GuardSettings.defaults.menuBarCountryDisplayMode == .hidden)
+    }
+
+    @Test("Refresh interval accepts user values in seconds or minutes")
+    func refreshIntervalUnitConversion() {
+        var settings = GuardSettings.defaults
+
+        settings.setCheckInterval(value: 45, unit: .seconds)
+        #expect(settings.checkInterval == 45)
+        #expect(settings.checkIntervalValue == 45)
+
+        settings.setCheckInterval(value: 2.5, unit: .minutes)
+        #expect(settings.checkInterval == 150)
+        #expect(settings.checkIntervalValue == 2.5)
+        #expect(settings.checkIntervalUnit == .minutes)
     }
 
     @Test("New protection rules are inserted at the top")
@@ -106,6 +122,8 @@ struct DomainModelTests {
         #expect(settings.allowedCountryCodes == ["SG"])
         #expect(settings.menuBarIPDisplayMode == .iconOnly)
         #expect(settings.showsCountryFlagInMenuBar == false)
+        #expect(settings.checkIntervalUnit == .seconds)
+        #expect(settings.menuBarCountryDisplayMode == .hidden)
         #expect(settings.rules.count == 1)
         #expect(settings.rules.first?.condition == .country)
         #expect(settings.rules.first?.value == "SG")

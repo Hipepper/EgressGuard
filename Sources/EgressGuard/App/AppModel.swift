@@ -8,7 +8,12 @@ final class AppModel {
     var identity: ExitIdentity?
     var directIdentity: ExitIdentity?
     var settings: GuardSettings {
-        didSet { settingsStore.saveSettings(settings) }
+        didSet {
+            settingsStore.saveSettings(settings)
+            if settings.checkInterval != oldValue.checkInterval {
+                restartPeriodicMonitoring()
+            }
+        }
     }
     var protectedApplications: [ProtectedApplication] {
         didSet { settingsStore.saveApplications(protectedApplications) }
@@ -23,7 +28,9 @@ final class AppModel {
     private let settingsStore: SettingsStore
     private let actionExecutor: RuleActionExecutor
     private let notificationService: any ExitNotificationSending
+    private let networkChangeMonitor: any NetworkChangeMonitoring
     private var monitoringTask: Task<Void, Never>?
+    private var networkRefreshTask: Task<Void, Never>?
     private let guardEngine = GuardEngine(configuration: GuardEngineConfiguration(
         violationThreshold: GuardSettings.defaults.violationThreshold,
         recoveryThreshold: GuardSettings.defaults.recoveryThreshold,
@@ -35,11 +42,13 @@ final class AppModel {
         directProviderCoordinator: ProviderCoordinator? = nil,
         settingsStore: SettingsStore = SettingsStore(),
         actionExecutor: RuleActionExecutor = RuleActionExecutor(),
-        notificationService: any ExitNotificationSending = SystemExitNotificationService()
+        notificationService: any ExitNotificationSending = SystemExitNotificationService(),
+        networkChangeMonitor: any NetworkChangeMonitoring = SystemNetworkChangeMonitor()
     ) {
         self.settingsStore = settingsStore
         self.actionExecutor = actionExecutor
         self.notificationService = notificationService
+        self.networkChangeMonitor = networkChangeMonitor
         settings = settingsStore.loadSettings()
         protectedApplications = settingsStore.loadApplications()
         self.providerCoordinator = providerCoordinator ?? ProviderCoordinator(providers: [
@@ -58,11 +67,14 @@ final class AppModel {
     }
 
     var menuBarText: String? {
-        guard settings.menuBarIPDisplayMode != .iconOnly else { return nil }
-
         var parts: [String] = []
-        if settings.showsCountryFlagInMenuBar, let identity {
-            parts.append(identity.countryFlag)
+        if let identity {
+            switch settings.menuBarCountryDisplayMode {
+            case .hidden: break
+            case .flag: parts.append(identity.countryFlag)
+            case .code:
+                if let code = identity.countryCode?.uppercased() { parts.append(code) }
+            }
         }
         if let ipv4 = identity?.ipv4Address {
             switch settings.menuBarIPDisplayMode {
@@ -136,15 +148,41 @@ final class AppModel {
         guard monitoringTask == nil else { return }
         Task { await notificationService.requestAuthorization() }
         checkNow(isManual: false)
+        networkChangeMonitor.start { [weak self] in
+            Task { @MainActor in self?.scheduleNetworkRefresh() }
+        }
+        startPeriodicMonitoring()
+    }
+
+    private func startPeriodicMonitoring() {
         monitoringTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                try? await Task.sleep(for: .seconds(max(15, self.settings.checkInterval)))
+                try? await Task.sleep(for: .seconds(max(1, self.settings.checkInterval)))
                 guard !Task.isCancelled else { return }
                 if self.status != .paused {
                     self.checkNow(isManual: false)
                 }
             }
+        }
+    }
+
+    private func restartPeriodicMonitoring() {
+        guard monitoringTask != nil else { return }
+        monitoringTask?.cancel()
+        startPeriodicMonitoring()
+    }
+
+    private func scheduleNetworkRefresh() {
+        networkRefreshTask?.cancel()
+        networkRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled, let self else { return }
+            while self.status == .checking && !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            guard !Task.isCancelled, self.status != .paused else { return }
+            self.checkNow(isManual: true)
         }
     }
 
@@ -241,26 +279,29 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case applications
     case notifications
     case history
+    case preferences
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .overview: "常规"
+        case .overview: "概览"
         case .rules: "保护规则"
         case .applications: "受保护应用"
         case .notifications: "通知"
         case .history: "历史记录"
+        case .preferences: "设置"
         }
     }
 
     var symbolName: String {
         switch self {
-        case .overview: "gearshape"
+        case .overview: "square.grid.2x2"
         case .rules: "checklist"
         case .applications: "app.badge.checkmark"
         case .notifications: "bell"
         case .history: "clock.arrow.circlepath"
+        case .preferences: "gearshape"
         }
     }
 }
