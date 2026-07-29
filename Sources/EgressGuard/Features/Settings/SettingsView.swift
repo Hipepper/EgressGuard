@@ -160,10 +160,10 @@ private struct OverviewDashboardView: View {
     private var identityPanel: some View {
         DashboardPanel(title: "当前出口身份", subtitle: identitySubtitle) {
             VStack(spacing: 0) {
-                IdentityRow(icon: "network", title: "IPv4 地址", value: model.identity?.ipv4Address ?? "—", tint: DashboardPalette.coral)
-                IdentityRow(icon: "point.3.connected.trianglepath.dotted", title: "IPv6 地址", value: model.ipv6Address ?? "未检测到", tint: DashboardPalette.pink)
-                IdentityRow(icon: "building.2", title: "网络归属", value: networkOwner, tint: DashboardPalette.purple)
-                IdentityRow(icon: "mappin.and.ellipse", title: "国家或地区", value: countryDescription, tint: DashboardPalette.blue, showsDivider: false)
+                IdentityRow(icon: "arrow.triangle.branch", title: "代理出口 IPv4", value: model.identity?.ipv4Address ?? "未检测到", tint: DashboardPalette.coral)
+                IdentityRow(icon: "point.3.filled.connected.trianglepath.dotted", title: "直连出口 IPv4", value: model.directIdentity?.ipv4Address ?? "未检测到", tint: DashboardPalette.pink)
+                IdentityRow(icon: "building.2", title: "代理网络归属", value: networkOwner, tint: DashboardPalette.purple)
+                IdentityRow(icon: "mappin.and.ellipse", title: "代理国家或地区", value: countryDescription, tint: DashboardPalette.blue, showsDivider: false)
             }
         }
     }
@@ -210,7 +210,8 @@ private struct OverviewDashboardView: View {
 
     private var identitySubtitle: String {
         guard let identity = model.identity else { return "尚未获得检测结果" }
-        return "由 \(identity.provider) 于 \(identity.checkedAt.formatted(date: .omitted, time: .shortened)) 更新"
+        let state = model.hasSplitEgress ? "检测到代理与直连分流" : "两个出口视角一致"
+        return "\(state) · \(identity.checkedAt.formatted(date: .omitted, time: .shortened)) 更新"
     }
 
     private var networkOwner: String {
@@ -383,7 +384,7 @@ private struct RulesSettingsView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("保护规则")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                Text("从上到下管理出口条件；满足条件时执行指定的应用动作。")
+                Text("按代理、直连或任一出口判断条件；满足时执行指定的应用动作。")
                     .font(.system(size: 14))
                     .foregroundStyle(.white.opacity(0.52))
             }
@@ -499,6 +500,9 @@ private struct RuleStackCard: View {
                 .foregroundStyle(.white.opacity(0.38))
                 .frame(width: 16)
 
+            Text(rule.perspective.title)
+                .foregroundStyle(DashboardPalette.purple)
+                .fontWeight(.semibold)
             Text(rule.comparison.title)
                 .foregroundStyle(rule.comparison == .isEqual ? DashboardPalette.coral : DashboardPalette.pink)
                 .fontWeight(.semibold)
@@ -547,6 +551,7 @@ private struct RuleStackCard: View {
     private var editor: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
+                RuleMenu(title: "出口", selection: $rule.perspective)
                 RuleMenu(title: "关系", selection: $rule.comparison)
                 RuleMenu(title: "条件", selection: $rule.condition)
                 conditionEditor
@@ -623,7 +628,7 @@ private struct RuleStackCard: View {
     }
 
     private var validationMessage: String {
-        rule.condition == .ip ? "请输入有效的 IPv4 或 IPv6 地址" : "请输入有效的 CIDR 网段"
+        rule.condition == .ip ? "请输入有效的 IPv4 地址" : "请输入有效的 CIDR 网段"
     }
 }
 
@@ -643,6 +648,7 @@ private struct RuleMenu<Value: Hashable & Identifiable & CaseIterable>: View whe
     }
 
     private func menuTitle(_ value: Value) -> String {
+        if let value = value as? GuardRule.Perspective { return value.title }
         if let value = value as? GuardRule.Comparison { return value.title }
         if let value = value as? GuardRule.Condition { return value.title }
         if let value = value as? GuardRule.Action { return value.title }

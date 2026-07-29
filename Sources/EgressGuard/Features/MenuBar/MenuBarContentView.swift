@@ -83,30 +83,22 @@ private struct EgressStatusCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(model.status.title)
                         .font(.system(size: 15, weight: .semibold))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.identity?.ip ?? "尚未取得出口 IPv4")
-                            .font(.system(size: 17, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.primary.opacity(0.88))
-                            .textSelection(.enabled)
-
-                        if let ipv6Address = model.ipv6Address {
-                            HStack(spacing: 5) {
-                                Text("IPv6")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(ipv6Address)
-                                    .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                    .textSelection(.enabled)
-                            }
-                            .help(ipv6Address)
-                        }
+                    VStack(alignment: .leading, spacing: 3) {
+                        ExitAddressLine(label: "代理", identity: model.identity)
+                        ExitAddressLine(label: "直连", identity: model.directIdentity)
                     }
                 }
                 Spacer()
+                if model.hasSplitEgress {
+                    Text("分流")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 7)
+                        .frame(height: 22)
+                        .background(.orange.opacity(0.12), in: Capsule())
+                }
                 Circle()
+
                     .fill(model.status.color)
                     .frame(width: 8, height: 8)
                     .shadow(color: model.status.color.opacity(0.6), radius: 5)
@@ -146,6 +138,24 @@ private struct EgressStatusCard: View {
                         .strokeBorder(.white.opacity(0.18), lineWidth: 0.8)
                 }
                 .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+        }
+    }
+}
+
+private struct ExitAddressLine: View {
+    let label: String
+    let identity: ExitIdentity?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, alignment: .leading)
+            Text(identity?.ipv4Address ?? "未检测到")
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                .foregroundStyle(.primary.opacity(0.88))
+                .textSelection(.enabled)
         }
     }
 }

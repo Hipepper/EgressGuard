@@ -1,6 +1,21 @@
 import Foundation
 
 struct GuardRule: Codable, Equatable, Identifiable, Sendable {
+    enum Perspective: String, Codable, CaseIterable, Identifiable, Sendable {
+        case proxy
+        case direct
+        case any
+
+        var id: Self { self }
+        var title: String {
+            switch self {
+            case .proxy: "代理出口"
+            case .direct: "直连出口"
+            case .any: "任一出口"
+            }
+        }
+    }
+
     enum Comparison: String, Codable, CaseIterable, Identifiable, Sendable {
         case isEqual
         case isNot
@@ -40,6 +55,7 @@ struct GuardRule: Codable, Equatable, Identifiable, Sendable {
     }
 
     var id: UUID
+    var perspective: Perspective
     var comparison: Comparison
     var condition: Condition
     var value: String
@@ -52,17 +68,35 @@ struct GuardRule: Codable, Equatable, Identifiable, Sendable {
         comparison: Comparison = .isNot,
         condition: Condition = .ip,
         value: String = "",
+        perspective: Perspective = .any,
         action: Action = .close,
         application: Application? = nil,
         isEnabled: Bool = true
     ) {
         self.id = id
+        self.perspective = perspective
         self.comparison = comparison
         self.condition = condition
         self.value = value
         self.action = action
         self.application = application
         self.isEnabled = isEnabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, perspective, comparison, condition, value, action, application, isEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        perspective = try container.decodeIfPresent(Perspective.self, forKey: .perspective) ?? .any
+        comparison = try container.decode(Comparison.self, forKey: .comparison)
+        condition = try container.decode(Condition.self, forKey: .condition)
+        value = try container.decode(String.self, forKey: .value)
+        action = try container.decode(Action.self, forKey: .action)
+        application = try container.decodeIfPresent(Application.self, forKey: .application)
+        isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
     }
 
     var isComplete: Bool {

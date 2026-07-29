@@ -7,7 +7,7 @@ struct IPAPICoProvider: ExitIPProvider {
     private let now: @Sendable () -> Date
 
     init(
-        loader: any HTTPDataLoader = URLSession.shared,
+        loader: any HTTPDataLoader = FreshHTTPDataLoader(),
         timeout: TimeInterval = 5,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
@@ -19,6 +19,7 @@ struct IPAPICoProvider: ExitIPProvider {
     func fetchIdentity() async throws -> ExitIdentity {
         var request = URLRequest(url: URL(string: "https://ipapi.co/json/")!)
         request.timeoutInterval = timeout
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("EgressGuard/0.1", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await loader.data(for: request)

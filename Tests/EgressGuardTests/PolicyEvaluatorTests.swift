@@ -46,6 +46,45 @@ struct PolicyEvaluatorTests {
         #expect(result.decision == .indeterminate)
     }
 
+    @Test("Direct-exit rule evaluates only the direct identity")
+    func directPerspectiveRule() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(
+            comparison: .isNot,
+            condition: .ip,
+            value: "58.240.1.1",
+            perspective: .direct
+        )]
+
+        let result = PolicyEvaluator().evaluate(
+            proxy: identity(ip: "103.54.154.42"),
+            direct: identity(ip: "58.240.1.1"),
+            against: NetworkPolicy(settings: settings)
+        )
+
+        #expect(result.decision == .allowed)
+    }
+
+    @Test("Any-exit rule triggers when either identity matches")
+    func anyPerspectiveRule() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(
+            comparison: .isEqual,
+            condition: .ip,
+            value: "58.240.1.1",
+            perspective: .any
+        )]
+
+        let result = PolicyEvaluator().evaluate(
+            proxy: identity(ip: "103.54.154.42"),
+            direct: identity(ip: "58.240.1.1"),
+            against: NetworkPolicy(settings: settings)
+        )
+
+        #expect(result.decision == .violated)
+        #expect(result.triggeredRuleIDs == Set(settings.rules.map(\.id)))
+    }
+
     @Test("IPv6 CIDR boundaries are supported")
     func ipv6CIDR() {
         let network = try? IPNetwork("2001:db8::/32")

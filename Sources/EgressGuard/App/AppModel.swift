@@ -6,7 +6,7 @@ import Observation
 final class AppModel {
     var status: GuardDisplayStatus = .starting
     var identity: ExitIdentity?
-    var ipv6Address: String?
+    var directIdentity: ExitIdentity?
     var settings: GuardSettings {
         didSet { settingsStore.saveSettings(settings) }
     }
@@ -18,10 +18,11 @@ final class AppModel {
     var policyMessage: String?
 
     private let providerCoordinator: ProviderCoordinator
-    private let ipv6Provider: any IPv6AddressProviding
+    private let directProviderCoordinator: ProviderCoordinator
     private let settingsStore: SettingsStore
+    private let actionExecutor: RuleActionExecutor
+    private let notificationService: any ExitNotificationSending
     private var monitoringTask: Task<Void, Never>?
-    private var ipv6Task: Task<Void, Never>?
     private let guardEngine = GuardEngine(configuration: GuardEngineConfiguration(
         violationThreshold: GuardSettings.defaults.violationThreshold,
         recoveryThreshold: GuardSettings.defaults.recoveryThreshold,
@@ -30,10 +31,14 @@ final class AppModel {
 
     init(
         providerCoordinator: ProviderCoordinator? = nil,
-        ipv6Provider: (any IPv6AddressProviding)? = nil,
-        settingsStore: SettingsStore = SettingsStore()
+        directProviderCoordinator: ProviderCoordinator? = nil,
+        settingsStore: SettingsStore = SettingsStore(),
+        actionExecutor: RuleActionExecutor = RuleActionExecutor(),
+        notificationService: any ExitNotificationSending = SystemExitNotificationService()
     ) {
         self.settingsStore = settingsStore
+        self.actionExecutor = actionExecutor
+        self.notificationService = notificationService
         settings = settingsStore.loadSettings()
         protectedApplications = settingsStore.loadApplications()
         self.providerCoordinator = providerCoordinator ?? ProviderCoordinator(providers: [
@@ -41,7 +46,14 @@ final class AppModel {
             IPAPICoProvider(),
             IPIPNetProvider()
         ])
-        self.ipv6Provider = ipv6Provider ?? IPv6AddressProvider()
+        self.directProviderCoordinator = directProviderCoordinator ?? ProviderCoordinator(providers: [
+            IPifyProvider(loader: DirectHTTPDataLoader())
+        ])
+    }
+
+    var hasSplitEgress: Bool {
+        guard let proxyIP = identity?.ipv4Address, let directIP = directIdentity?.ipv4Address else { return false }
+        return proxyIP != directIP
     }
 
     var menuBarText: String? {
@@ -62,58 +74,74 @@ final class AppModel {
     }
 
     func checkNow() {
+        checkNow(isManual: true)
+    }
+
+    private func checkNow(isManual: Bool) {
         guard status != .checking else { return }
         status = .checking
         lastErrorMessage = nil
-        refreshIPv6Address()
         Task {
-            do {
-                let fetchedIdentity = try await providerCoordinator.fetchIdentity()
-                identity = fetchedIdentity
-                if settings.isProtectionEnabled && settings.hasPolicyConstraints {
-                    await guardEngine.updateConfiguration(engineConfiguration)
-                    let evaluation = PolicyEvaluator().evaluate(
-                        fetchedIdentity,
-                        against: NetworkPolicy(settings: settings)
-                    )
-                    policyMessage = evaluation.violations.first?.description ?? evaluation.missingFields.first.map {
-                        "检测源未提供\($0 == .asn ? " ASN" : "国家/地区")，暂不执行处置"
-                    }
-                    let update = await guardEngine.process(evaluation)
-                    apply(update.state)
-                } else {
-                    policyMessage = settings.isProtectionEnabled ? "请先配置至少一条允许规则" : nil
-                    status = .healthy
-                }
-            } catch is CancellationError {
-                return
-            } catch {
-                lastErrorMessage = error.localizedDescription
+            async let proxyFetch = try? providerCoordinator.fetchIdentity()
+            async let directFetch = try? directProviderCoordinator.fetchIdentity()
+            let (proxyResult, directResult) = await (proxyFetch, directFetch)
+            guard let policyIdentity = proxyResult ?? directResult else {
+                lastErrorMessage = ExitIPProviderError.allProvidersFailed.localizedDescription
                 status = .unavailable
+                return
             }
-        }
-    }
 
-    private func refreshIPv6Address() {
-        ipv6Task?.cancel()
-        ipv6Address = nil
-        ipv6Task = Task { [weak self, ipv6Provider] in
-            let address = try? await ipv6Provider.fetchAddress()
-            guard !Task.isCancelled else { return }
-            self?.ipv6Address = address
+            let changes = ExitChangeDetector.changes(
+                previousProxy: identity,
+                previousDirect: directIdentity,
+                proxy: proxyResult,
+                direct: directResult
+            )
+            identity = proxyResult
+            directIdentity = directResult
+            await notificationService.notify(changes: changes)
+
+            if settings.isProtectionEnabled && settings.hasPolicyConstraints {
+                await guardEngine.updateConfiguration(engineConfiguration)
+                let evaluation = PolicyEvaluator().evaluate(
+                    proxy: policyIdentity,
+                    direct: directResult,
+                    against: NetworkPolicy(settings: settings)
+                )
+                policyMessage = evaluation.violations.first?.description ?? evaluation.missingFields.first.map {
+                    "检测源未提供\($0 == .asn ? " ASN" : ($0 == .directExit ? "直连出口" : "国家/地区"))，暂不执行处置"
+                }
+                let update = isManual
+                    ? await guardEngine.processImmediately(evaluation)
+                    : await guardEngine.process(evaluation)
+                apply(update.state)
+                if case .confirmViolation = update.action {
+                    let results = await actionExecutor.execute(
+                        rules: settings.rules,
+                        triggeredRuleIDs: evaluation.triggeredRuleIDs
+                    )
+                    await notificationService.notify(actionResults: results)
+                    let mitigated = await guardEngine.markMitigated()
+                    apply(mitigated.state)
+                }
+            } else {
+                policyMessage = settings.isProtectionEnabled ? "请先配置至少一条允许规则" : nil
+                status = .healthy
+            }
         }
     }
 
     func startMonitoring() {
         guard monitoringTask == nil else { return }
-        checkNow()
+        Task { await notificationService.requestAuthorization() }
+        checkNow(isManual: false)
         monitoringTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 try? await Task.sleep(for: .seconds(max(15, self.settings.checkInterval)))
                 guard !Task.isCancelled else { return }
                 if self.status != .paused {
-                    self.checkNow()
+                    self.checkNow(isManual: false)
                 }
             }
         }

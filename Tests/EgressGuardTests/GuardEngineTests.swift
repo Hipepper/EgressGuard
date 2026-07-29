@@ -17,6 +17,20 @@ struct GuardEngineTests {
         #expect(await engine.process(violation).action == nil)
     }
 
+    @Test("Manual check confirms violation immediately")
+    func manualCheckBypassesGraceAndThreshold() async {
+        let engine = GuardEngine(configuration: GuardEngineConfiguration(
+            violationThreshold: 3,
+            recoveryThreshold: 2,
+            startupGracePeriod: 60
+        ), now: { Date(timeIntervalSince1970: 100) })
+
+        let update = await engine.processImmediately(evaluation(.violated))
+
+        #expect(update.state == .confirmedViolation)
+        #expect(update.action != nil)
+    }
+
     @Test("Provider unavailable does not increment violation count")
     func unavailableDoesNotIncrement() async {
         let engine = makeEngine(violationThreshold: 3)

@@ -14,7 +14,6 @@ enum ExitIPProviderError: Error, Equatable, Sendable {
     case invalidCountryCode(String)
     case allProvidersFailed
     case checkAlreadyInProgress
-    case ipv6Unavailable
 }
 
 extension ExitIPProviderError: LocalizedError {
@@ -28,7 +27,6 @@ extension ExitIPProviderError: LocalizedError {
         case let .invalidCountryCode(code): "服务返回了无效国家代码：\(code)"
         case .allProvidersFailed: "所有出口检测服务均不可用"
         case .checkAlreadyInProgress: "已有检测正在进行"
-        case .ipv6Unavailable: "当前网络没有可用的原生 IPv6 出口"
         }
     }
 }

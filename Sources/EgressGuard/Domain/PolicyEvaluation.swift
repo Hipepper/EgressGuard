@@ -10,11 +10,26 @@ struct PolicyEvaluation: Equatable, Sendable {
     let decision: Decision
     let violations: [Violation]
     let missingFields: [IdentityField]
+    let triggeredRuleIDs: Set<UUID>
+
+    init(
+        decision: Decision,
+        violations: [Violation],
+        missingFields: [IdentityField],
+        triggeredRuleIDs: Set<UUID> = []
+    ) {
+        self.decision = decision
+        self.violations = violations
+        self.missingFields = missingFields
+        self.triggeredRuleIDs = triggeredRuleIDs
+    }
 }
+
 
 enum IdentityField: String, Equatable, Sendable {
     case country
     case asn
+    case directExit
 }
 
 enum Violation: Equatable, Sendable {
