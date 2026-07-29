@@ -46,6 +46,7 @@ struct MenuBarContentView: View {
                     tint: .red,
                     showsChevron: false
                 ) {
+                    model.recordTermination()
                     NSApplication.shared.terminate(nil)
                 }
             }

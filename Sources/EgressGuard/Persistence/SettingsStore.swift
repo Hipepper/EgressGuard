@@ -4,6 +4,7 @@ struct SettingsStore {
     private let defaults: UserDefaults
     private let settingsKey = "guardSettings"
     private let applicationsKey = "protectedApplications"
+    private let runtimeLogsKey = "runtimeLogs"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -33,5 +34,18 @@ struct SettingsStore {
     func saveApplications(_ applications: [ProtectedApplication]) {
         guard let data = try? JSONEncoder().encode(applications) else { return }
         defaults.set(data, forKey: applicationsKey)
+    }
+
+    func loadRuntimeLogs() -> [RuntimeLogEntry] {
+        guard let data = defaults.data(forKey: runtimeLogsKey),
+              let logs = try? JSONDecoder().decode([RuntimeLogEntry].self, from: data) else {
+            return []
+        }
+        return logs
+    }
+
+    func saveRuntimeLogs(_ logs: [RuntimeLogEntry]) {
+        guard let data = try? JSONEncoder().encode(Array(logs.suffix(1_000))) else { return }
+        defaults.set(data, forKey: runtimeLogsKey)
     }
 }

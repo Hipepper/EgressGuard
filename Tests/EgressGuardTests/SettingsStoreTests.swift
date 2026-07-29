@@ -35,10 +35,17 @@ struct SettingsStoreTests {
 
         store.saveSettings(settings)
         store.saveApplications([application])
+        let log = RuntimeLogEntry(
+            sessionID: UUID(),
+            category: .lifecycle,
+            message: "EgressGuard 启动"
+        )
+        store.saveRuntimeLogs([log])
 
         #expect(store.loadSettings() == settings)
         #expect(store.loadSettings().interfaceTheme == .light)
         #expect(store.loadSettings().email == settings.email)
         #expect(store.loadApplications() == [application])
+        #expect(store.loadRuntimeLogs() == [log])
     }
 }

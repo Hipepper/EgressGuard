@@ -26,6 +26,7 @@ final class AppModel {
         didSet { emailPasswordStore.save(emailPassword) }
     }
     var emailTestStatus: EmailTestStatus = .idle
+    var runtimeLogs: [RuntimeLogEntry] = []
 
     private let providerCoordinator: ProviderCoordinator
     private let directProviderCoordinator: ProviderCoordinator
@@ -35,6 +36,8 @@ final class AppModel {
     private let networkChangeMonitor: any NetworkChangeMonitoring
     private let emailService: any EmailSending
     private let emailPasswordStore: EmailPasswordStore
+    private let sessionStartedAt = Date()
+    private let sessionID = UUID()
     private var hasNotifiedCurrentFailure = false
     private var monitoringTask: Task<Void, Never>?
     private var networkRefreshTask: Task<Void, Never>?
@@ -63,6 +66,7 @@ final class AppModel {
         emailPassword = emailPasswordStore.load()
         settings = settingsStore.loadSettings()
         protectedApplications = settingsStore.loadApplications()
+        runtimeLogs = settingsStore.loadRuntimeLogs()
         self.providerCoordinator = providerCoordinator ?? ProviderCoordinator(providers: [
             IPWhoIsProvider(),
             IPAPICoProvider(),
@@ -71,6 +75,13 @@ final class AppModel {
         self.directProviderCoordinator = directProviderCoordinator ?? ProviderCoordinator(providers: [
             IPifyProvider(loader: DirectHTTPDataLoader())
         ])
+        appendLog(.lifecycle, message: "EgressGuard 启动", detail: "新运行会话已创建")
+        appendLog(
+            .lifecycle,
+            level: .success,
+            message: "应用初始化完成",
+            detail: "配置、规则和受保护应用已载入 · 耗时 \(elapsedDescription(since: sessionStartedAt))"
+        )
     }
 
     var hasSplitEgress: Bool {
@@ -104,6 +115,12 @@ final class AppModel {
 
     private func checkNow(isManual: Bool) {
         guard status != .checking else { return }
+        let startedAt = Date()
+        appendLog(
+            .detection,
+            message: isManual ? "开始手动检测" : "开始自动检测",
+            detail: "并行请求代理出口与无系统代理出口"
+        )
         status = .checking
         lastErrorMessage = nil
         Task {
@@ -113,6 +130,12 @@ final class AppModel {
             guard let policyIdentity = proxyResult ?? directResult else {
                 lastErrorMessage = ExitIPProviderError.allProvidersFailed.localizedDescription
                 status = .unavailable
+                appendLog(
+                    .error,
+                    level: .error,
+                    message: "出口检测失败",
+                    detail: "\(lastErrorMessage ?? "未知错误") · 耗时 \(elapsedDescription(since: startedAt))"
+                )
                 if !hasNotifiedCurrentFailure {
                     hasNotifiedCurrentFailure = true
                     await sendEmailIfEnabled(subject: "EgressGuard 运行失败", body: lastErrorMessage ?? "所有公网出口检测服务均不可用")
@@ -120,6 +143,12 @@ final class AppModel {
                 return
             }
             hasNotifiedCurrentFailure = false
+            appendLog(
+                .detection,
+                level: .success,
+                message: "出口检测完成",
+                detail: "代理 \(proxyResult?.ipv4Address ?? "未获取") · 无代理 \(directResult?.ipv4Address ?? "未获取") · 耗时 \(elapsedDescription(since: startedAt))"
+            )
 
             let changes = ExitChangeDetector.changes(
                 previousProxy: identity,
@@ -131,6 +160,12 @@ final class AppModel {
             directIdentity = directResult
             await notificationService.notify(changes: changes)
             if !changes.isEmpty {
+                appendLog(
+                    .detection,
+                    level: .warning,
+                    message: "检测到出口 IP 变化",
+                    detail: changes.map { "\($0.perspective.title) \($0.oldIP) → \($0.newIP)" }.joined(separator: "；")
+                )
                 await sendEmailIfEnabled(
                     subject: "EgressGuard 检测到 IP 变更",
                     body: changes.map { "\($0.perspective.title)：\($0.oldIP) → \($0.newIP)" }.joined(separator: "\n")
@@ -152,11 +187,25 @@ final class AppModel {
                     : await guardEngine.process(evaluation)
                 apply(update.state)
                 if case .confirmViolation = update.action {
+                    appendLog(
+                        .rule,
+                        level: .warning,
+                        message: "规则达到触发条件",
+                        detail: evaluation.violations.map(\.description).joined(separator: "；")
+                    )
                     let results = await actionExecutor.execute(
                         rules: settings.rules,
                         triggeredRuleIDs: evaluation.triggeredRuleIDs
                     )
                     await notificationService.notify(actionResults: results)
+                    appendLog(
+                        .rule,
+                        level: results.allSatisfy(\.succeeded) ? .success : .error,
+                        message: "规则动作执行完成",
+                        detail: results.isEmpty ? "没有可执行的应用动作" : results.map {
+                            "\($0.action.title) \($0.applicationName)：\($0.succeeded ? "成功" : "失败")"
+                        }.joined(separator: "；")
+                    )
                     if !results.isEmpty {
                         await sendEmailIfEnabled(
                             subject: "EgressGuard 保护规则已执行",
@@ -177,6 +226,7 @@ final class AppModel {
 
     func startMonitoring() {
         guard monitoringTask == nil else { return }
+        appendLog(.lifecycle, message: "启动出口保护服务", detail: "检测间隔 \(Int(settings.checkInterval)) 秒")
         Task { await notificationService.requestAuthorization() }
         checkNow(isManual: false)
         networkChangeMonitor.start { [weak self] in
@@ -218,6 +268,7 @@ final class AppModel {
     }
 
     func pauseProtection() {
+        appendLog(.lifecycle, level: .warning, message: "保护服务已暂停")
         Task {
             let update = await guardEngine.pause(until: nil)
             apply(update.state)
@@ -225,6 +276,7 @@ final class AppModel {
     }
 
     func resumeProtection() {
+        appendLog(.lifecycle, message: "恢复出口保护服务")
         Task {
             let update = await guardEngine.resume()
             apply(update.state)
@@ -282,8 +334,10 @@ final class AppModel {
                     password: emailPassword
                 )
                 emailTestStatus = .succeeded("测试邮件已发送至 \(settings.email.recipientAddress)")
+                appendLog(.email, level: .success, message: "测试邮件发送成功", detail: settings.email.recipientAddress)
             } catch {
                 emailTestStatus = .failed(error.localizedDescription)
+                appendLog(.email, level: .error, message: "测试邮件发送失败", detail: error.localizedDescription)
             }
         }
     }
@@ -298,7 +352,35 @@ final class AppModel {
             )
         } catch {
             lastErrorMessage = error.localizedDescription
+            appendLog(.email, level: .error, message: "告警邮件发送失败", detail: error.localizedDescription)
         }
+    }
+
+    func recordTermination() {
+        appendLog(.lifecycle, message: "用户退出 EgressGuard")
+    }
+
+    private func appendLog(
+        _ category: RuntimeLogEntry.Category,
+        level: RuntimeLogEntry.Level = .info,
+        message: String,
+        detail: String? = nil
+    ) {
+        runtimeLogs.append(RuntimeLogEntry(
+            sessionID: sessionID,
+            category: category,
+            level: level,
+            message: message,
+            detail: detail
+        ))
+        if runtimeLogs.count > 1_000 {
+            runtimeLogs.removeFirst(runtimeLogs.count - 1_000)
+        }
+        settingsStore.saveRuntimeLogs(runtimeLogs)
+    }
+
+    private func elapsedDescription(since date: Date) -> String {
+        String(format: "%.2f 秒", Date().timeIntervalSince(date))
     }
 
     private var engineConfiguration: GuardEngineConfiguration {
@@ -366,7 +448,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .overview: "概览"
         case .rules: "保护规则"
         case .notifications: "通知"
-        case .history: "历史记录"
+        case .history: "运行日志"
         case .preferences: "设置"
         }
     }

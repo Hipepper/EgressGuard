@@ -21,7 +21,7 @@ struct SettingsView: View {
                     onTest: model.testRule
                 )
                 case .notifications: EmailSettingsView(model: model)
-                case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
+                case .history: RuntimeLogView(model: model)
                 case .preferences: PreferencesSettingsView(
                     settings: $model.settings,
                     identity: model.identity,
@@ -608,6 +608,7 @@ private struct RulesSettingsView: View {
                 .padding(.top, 42)
                 .padding(.bottom, 34)
             }
+            .scrollIndicators(.hidden)
         }
         .sheet(isPresented: countrySheetPresented) {
             SingleCountryPicker(selection: selectedCountryValue)
@@ -629,9 +630,6 @@ private struct RulesSettingsView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("保护规则")
                     .font(.system(size: 30, weight: .bold, design: .rounded))
-                Text("按代理、无代理或任一出口判断条件；满足时执行指定的应用动作。")
-                    .font(.system(size: 14))
-                    .foregroundStyle(DashboardPalette.text.opacity(0.52))
             }
             Spacer()
             Button(action: toggleAllRules) {
@@ -1445,6 +1443,116 @@ private struct EmailSettingsView: View {
         if case .failed = model.emailTestStatus { return DashboardPalette.coral }
         if case .succeeded = model.emailTestStatus { return .green }
         return DashboardPalette.purple
+    }
+}
+
+private struct RuntimeLogView: View {
+    @Bindable var model: AppModel
+
+    var body: some View {
+        ZStack {
+            DashboardPalette.canvas.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    header
+                    if model.runtimeLogs.isEmpty {
+                        ContentUnavailableView("暂无运行日志", systemImage: "doc.text.magnifyingglass")
+                            .frame(maxWidth: .infinity, minHeight: 360)
+                    } else {
+                        LazyVStack(spacing: 10) {
+                            ForEach(model.runtimeLogs.reversed()) { entry in
+                                RuntimeLogRow(entry: entry)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 34)
+                .padding(.top, 42)
+                .padding(.bottom, 34)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("运行日志")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Text("记录本次启动中的初始化、检测、规则运行与错误，便于定位耗时和故障。")
+                    .font(.system(size: 14))
+                    .foregroundStyle(DashboardPalette.text.opacity(0.52))
+            }
+            Spacer()
+            Label("最近 \(model.runtimeLogs.count) 条", systemImage: "clock.arrow.circlepath")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DashboardPalette.text.opacity(0.64))
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(DashboardPalette.glassFill, in: Capsule())
+                .overlay(Capsule().stroke(DashboardPalette.border))
+        }
+    }
+}
+
+private struct RuntimeLogRow: View {
+    let entry: RuntimeLogEntry
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(levelColor.opacity(0.14))
+                Image(systemName: entry.category.symbolName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(levelColor)
+            }
+            .frame(width: 40, height: 40)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(entry.message).font(.system(size: 14, weight: .semibold))
+                    Text(entry.category.title)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(levelColor)
+                        .padding(.horizontal, 7)
+                        .frame(height: 20)
+                        .background(levelColor.opacity(0.10), in: Capsule())
+                }
+                if let detail = entry.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DashboardPalette.text.opacity(0.52))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Spacer(minLength: 12)
+            Text(entry.timestamp.formatted(date: .omitted, time: .standard))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(DashboardPalette.text.opacity(0.42))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [DashboardPalette.panelTop, DashboardPalette.panel],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(DashboardPalette.border))
+    }
+
+    private var levelColor: Color {
+        switch entry.level {
+        case .info: DashboardPalette.blue
+        case .success: .green
+        case .warning: .orange
+        case .error: DashboardPalette.coral
+        }
     }
 }
 

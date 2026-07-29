@@ -99,7 +99,7 @@ struct DomainModelTests {
 
     @Test("Settings sidebar omits the redundant protected applications page")
     func settingsSidebarSections() {
-        #expect(SettingsSection.allCases.map(\.title) == ["概览", "保护规则", "通知", "历史记录", "设置"])
+        #expect(SettingsSection.allCases.map(\.title) == ["概览", "保护规则", "通知", "运行日志", "设置"])
     }
 
     @Test("Continuous selector maps pointer positions and clamps at its edges")
