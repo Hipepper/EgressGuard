@@ -9,7 +9,10 @@ struct EgressGuardApp: App {
             MenuBarContentView(model: model)
         } label: {
             HStack(alignment: .center, spacing: 4) {
-                EgressStatusGlyph(status: model.status, size: 15, presentation: .menuBar)
+                Image(systemName: model.status.menuBarSymbolName)
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(model.status.color)
                     .frame(width: 17, height: 17, alignment: .center)
                 if let menuBarText = model.menuBarText {
                     Text(menuBarText)

@@ -4,6 +4,44 @@ import Testing
 
 @Suite("Domain models")
 struct DomainModelTests {
+    @Test("Menu bar uses a filled shield for healthy protection")
+    func healthyMenuBarStatusAppearance() {
+        #expect(GuardDisplayStatus.healthy.menuBarSymbolName == "checkmark.shield.fill")
+        #expect(GuardDisplayStatus.violation.menuBarSymbolName == "exclamationmark.shield.fill")
+    }
+
+    @Test("Application catalog includes closed apps and marks running apps")
+    func applicationCatalogMerge() {
+        let installed = [
+            InstalledApplication(
+                bundleIdentifier: "com.example.closed",
+                displayName: "Closed App",
+                url: URL(fileURLWithPath: "/Applications/Closed.app"),
+                isRunning: false
+            ),
+            InstalledApplication(
+                bundleIdentifier: "com.example.running",
+                displayName: "Running App",
+                url: URL(fileURLWithPath: "/Applications/Running.app"),
+                isRunning: false
+            )
+        ]
+        let running = [
+            InstalledApplication(
+                bundleIdentifier: "com.example.running",
+                displayName: "Running App",
+                url: URL(fileURLWithPath: "/Applications/Running.app"),
+                isRunning: true
+            )
+        ]
+
+        let applications = ApplicationCatalog.merging(installed: installed, running: running)
+
+        #expect(applications.count == 2)
+        #expect(applications.first { $0.bundleIdentifier == "com.example.closed" }?.isRunning == false)
+        #expect(applications.first { $0.bundleIdentifier == "com.example.running" }?.isRunning == true)
+    }
+
     @Test("Country code becomes a flag")
     func countryFlag() {
         let identity = ExitIdentity(

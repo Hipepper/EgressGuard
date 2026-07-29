@@ -835,16 +835,25 @@ private struct RuleApplicationPicker: View {
                             Text(application.bundleIdentifier).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
+                        if application.isRunning {
+                            Text("运行中")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 7)
+                                .frame(height: 20)
+                                .background(.green.opacity(0.12), in: Capsule())
+                                .overlay(Capsule().stroke(.green.opacity(0.22)))
+                        }
                         Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            .searchable(text: $searchText, prompt: "搜索正在运行的应用")
+            .searchable(text: $searchText, prompt: "搜索已安装应用")
         }
         .frame(width: 560, height: 500)
-        .task { applications = await ApplicationCatalog().runningApplications() }
+        .task { applications = await ApplicationCatalog().applications() }
     }
 }
 
@@ -951,7 +960,10 @@ private struct PreferencesSettingsView: View {
 
                     DashboardPanel(title: "展示预览", subtitle: "顶部状态栏将按照以下组合显示") {
                         HStack(spacing: 10) {
-                            EgressStatusGlyph(status: status, size: 17, presentation: .menuBar)
+                            Image(systemName: status.menuBarSymbolName)
+                                .symbolRenderingMode(.monochrome)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(status.color)
                                 .frame(width: 20, height: 20)
                             if let preview = menuBarPreview {
                                 Text(preview)

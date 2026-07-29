@@ -35,6 +35,8 @@ enum GuardDisplayStatus: Equatable, Sendable {
         }
     }
 
+    var menuBarSymbolName: String { symbolName }
+
     var color: Color {
         switch self {
         case .healthy: .green
