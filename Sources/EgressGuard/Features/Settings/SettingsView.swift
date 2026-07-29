@@ -44,6 +44,7 @@ struct SettingsView: View {
         .foregroundStyle(DashboardPalette.text)
         .background(DashboardPalette.sidebar)
         .preferredColorScheme(model.settings.interfaceTheme.colorScheme)
+        .id(model.settings.interfaceTheme)
     }
 }
 
@@ -220,7 +221,7 @@ private struct SettingsSidebar: View {
     }
 }
 
-private extension InterfaceTheme {
+extension InterfaceTheme {
     var colorScheme: ColorScheme? {
         switch self {
         case .system: nil
@@ -254,12 +255,15 @@ private struct OverviewDashboardView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     dashboardHeader
                     metricCards
-                    HStack(alignment: .top, spacing: 20) {
-                        VStack(spacing: 20) {
+                    VStack(spacing: 20) {
+                        HStack(alignment: .top, spacing: 20) {
                             identityPanel
-                            emailPanel
+                            policyPanel.frame(width: 300)
                         }
-                        policyPanel.frame(width: 300)
+                        HStack(alignment: .top, spacing: 20) {
+                            emailPanel
+                            Color.clear.frame(width: 300)
+                        }
                     }
                 }
                 .padding(.horizontal, 34)
@@ -312,13 +316,13 @@ private struct OverviewDashboardView: View {
             MetricCard(icon: "globe.asia.australia.fill", value: model.identity?.ipv4Address ?? "等待检测",
                        label: model.identity.map { "\($0.countryFlag) \($0.countryName ?? "未知地区")" } ?? "当前公网 IPv4",
                        colors: [DashboardPalette.pink, DashboardPalette.purple])
-            MetricCard(icon: "app.badge.checkmark.fill", value: "\(model.protectedApplications.count)",
-                       label: "受保护应用", colors: [DashboardPalette.purple, DashboardPalette.blue])
+            MetricCard(icon: "checklist.checked", value: "\(configuredRuleCount)",
+                       label: "开启规则数", colors: [DashboardPalette.purple, DashboardPalette.blue])
         }
     }
 
     private var identityPanel: some View {
-        DashboardPanel(title: "当前出口身份", subtitle: identitySubtitle) {
+        DashboardPanel(title: "当前出口身份", subtitle: identitySubtitle, minimumHeight: 300) {
             VStack(spacing: 0) {
                 IdentityRow(icon: "arrow.triangle.branch", title: "代理出口 IPv4", value: model.identity?.ipv4Address ?? "未检测到", tint: DashboardPalette.coral)
                 IdentityRow(icon: "point.3.filled.connected.trianglepath.dotted", title: "无系统代理 IPv4", value: model.directIdentity?.ipv4Address ?? "未检测到", tint: DashboardPalette.pink)
@@ -372,10 +376,10 @@ private struct OverviewDashboardView: View {
     }
 
     private var policyPanel: some View {
-        DashboardPanel(title: "保护策略", subtitle: policySummary) {
+        DashboardPanel(title: "保护策略", subtitle: policySummary, minimumHeight: 300) {
             VStack(alignment: .leading, spacing: 16) {
                 Label("每 \(Int(model.settings.checkInterval)) 秒自动检测", systemImage: "timer")
-                Label("连续 \(model.settings.violationThreshold) 次异常后触发", systemImage: "shield.lefthalf.filled")
+                Label("连续 \(model.settings.violationThreshold) 次规则命中后执行", systemImage: "shield.lefthalf.filled")
                 Label("\(configuredRuleCount) 条允许条件", systemImage: "checklist.checked")
                 Label("\(model.protectedApplications.count) 个处置目标", systemImage: "square.stack.3d.up")
 
@@ -472,6 +476,7 @@ private struct MetricCard: View {
 private struct DashboardPanel<Content: View>: View {
     let title: String
     let subtitle: String
+    var minimumHeight: CGFloat? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -483,7 +488,7 @@ private struct DashboardPanel<Content: View>: View {
             content
         }
         .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: minimumHeight, alignment: .topLeading)
         .background(
             LinearGradient(colors: [DashboardPalette.panelTop, DashboardPalette.panel], startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -752,7 +757,7 @@ private struct RuleStackCard: View {
             if isExpanded {
                 Divider().overlay(DashboardPalette.border)
                 editor
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .background(
@@ -760,6 +765,7 @@ private struct RuleStackCard: View {
             in: RoundedRectangle(cornerRadius: 17, style: .continuous)
         )
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .stroke(isExpanded ? DashboardPalette.purple.opacity(0.55) : DashboardPalette.border, lineWidth: 1)
@@ -986,8 +992,18 @@ private struct CountryOption: Identifiable, Hashable {
     }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
     static func flag(for code: String) -> String {
-        let scalars = code.uppercased().unicodeScalars.compactMap { UnicodeScalar(127_397 + $0.value) }
-        return String(String.UnicodeScalarView(scalars))
+        RegionFlag.symbol(for: code)
+    }
+}
+
+enum RegionFlag {
+    static func symbol(for code: String) -> String {
+        let scalars = Array(code.uppercased().unicodeScalars)
+        guard scalars.count == 2,
+              scalars.allSatisfy({ (65...90).contains($0.value) }) else {
+            return "--"
+        }
+        return String(String.UnicodeScalarView(scalars.compactMap { UnicodeScalar(127_397 + $0.value) }))
     }
 }
 
@@ -1275,6 +1291,7 @@ private struct PreferencesSettingsView: View {
 
 private struct EmailSettingsView: View {
     @Bindable var model: AppModel
+    @State private var showsPassword = false
 
     var body: some View {
         ZStack {
@@ -1353,9 +1370,31 @@ private struct EmailSettingsView: View {
                 mailField("SMTP 用户名", text: $model.settings.email.username, prompt: "name@example.com")
                 VStack(alignment: .leading, spacing: 6) {
                     Text("密码 / 授权码").font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
-                    SecureField("SMTP 密码或授权码", text: $model.emailPassword)
-                        .textFieldStyle(.plain).padding(.horizontal, 11).frame(height: 38)
-                        .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
+                    HStack(spacing: 8) {
+                        Group {
+                            if showsPassword {
+                                TextField("SMTP 密码或授权码", text: $model.emailPassword)
+                            } else {
+                                SecureField("SMTP 密码或授权码", text: $model.emailPassword)
+                            }
+                        }
+                        .textFieldStyle(.plain)
+
+                        Button {
+                            showsPassword.toggle()
+                        } label: {
+                            Image(systemName: showsPassword ? "eye.slash.fill" : "eye.fill")
+                                .foregroundStyle(DashboardPalette.text.opacity(0.48))
+                                .frame(width: 22, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .help(showsPassword ? "隐藏密码或授权码" : "显示密码或授权码")
+                        .accessibilityLabel(showsPassword ? "隐藏密码或授权码" : "显示密码或授权码")
+                    }
+                    .padding(.leading, 11)
+                    .padding(.trailing, 7)
+                    .frame(height: 38)
+                    .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
                 }.frame(maxWidth: .infinity)
             }
             HStack(spacing: 14) {

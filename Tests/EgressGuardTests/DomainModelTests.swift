@@ -72,6 +72,13 @@ struct DomainModelTests {
         #expect(identity.countryFlag == "🌐")
     }
 
+    @Test("Region picker replaces non-country flags with a placeholder")
+    func regionFlagPlaceholder() {
+        #expect(RegionFlag.symbol(for: "SG") == "🇸🇬")
+        #expect(RegionFlag.symbol(for: "002") == "--")
+        #expect(RegionFlag.symbol(for: "") == "--")
+    }
+
     @Test("PRD defaults are preserved")
     func settingsDefaults() {
         #expect(GuardSettings.defaults.checkInterval == 30)

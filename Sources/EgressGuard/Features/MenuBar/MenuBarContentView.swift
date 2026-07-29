@@ -55,10 +55,11 @@ struct MenuBarContentView: View {
         .background {
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(MenuGlassPalette.windowTint(colorScheme))
                 LinearGradient(
                     colors: colorScheme == .dark
-                        ? [Color.cyan.opacity(0.09), Color.blue.opacity(0.025), Color.clear]
-                        : [Color.white.opacity(0.42), Color.cyan.opacity(0.055), Color.clear],
+                        ? [Color.cyan.opacity(0.10), Color.indigo.opacity(0.045), Color.clear]
+                        : [Color.white.opacity(0.34), Color.cyan.opacity(0.045), Color.clear],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -68,6 +69,7 @@ struct MenuBarContentView: View {
 }
 
 private struct EgressStatusCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var model: AppModel
 
     var body: some View {
@@ -132,12 +134,16 @@ private struct EgressStatusCard: View {
         .padding(16)
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.thinMaterial)
+                .fill(.ultraThinMaterial)
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.8)
+                        .fill(MenuGlassPalette.cardTint(colorScheme))
                 }
-                .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(MenuGlassPalette.border(colorScheme), lineWidth: 0.8)
+                }
+                .shadow(color: MenuGlassPalette.shadow(colorScheme), radius: 16, y: 7)
         }
     }
 }
@@ -181,6 +187,7 @@ private struct StatusMetric: View {
 }
 
 private struct GlassActionButton: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     let subtitle: String
     let systemImage: String
@@ -216,28 +223,55 @@ private struct GlassActionButton: View {
             .frame(height: 54)
             .contentShape(Rectangle())
         }
-        .buttonStyle(GlassButtonStyle())
+        .buttonStyle(GlassButtonStyle(colorScheme: colorScheme))
         .disabled(isDisabled)
     }
 }
 
 private struct GlassButtonStyle: ButtonStyle {
+    let colorScheme: ColorScheme
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background {
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(.regularMaterial)
+                    .fill(.ultraThinMaterial)
                     .overlay {
                         RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .fill(.white.opacity(configuration.isPressed ? 0.19 : 0.10))
+                            .fill(MenuGlassPalette.buttonTint(colorScheme, isPressed: configuration.isPressed))
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+                            .strokeBorder(MenuGlassPalette.border(colorScheme), lineWidth: 0.8)
                     }
             }
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .opacity(configuration.isPressed ? 0.88 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private enum MenuGlassPalette {
+    static func windowTint(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? .black.opacity(0.34) : .white.opacity(0.28)
+    }
+
+    static func cardTint(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? .black.opacity(0.22) : .white.opacity(0.24)
+    }
+
+    static func buttonTint(_ colorScheme: ColorScheme, isPressed: Bool) -> Color {
+        if colorScheme == .dark {
+            return .white.opacity(isPressed ? 0.12 : 0.055)
+        }
+        return .white.opacity(isPressed ? 0.42 : 0.25)
+    }
+
+    static func border(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? .white.opacity(0.13) : .white.opacity(0.72)
+    }
+
+    static func shadow(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? .black.opacity(0.34) : .black.opacity(0.10)
     }
 }

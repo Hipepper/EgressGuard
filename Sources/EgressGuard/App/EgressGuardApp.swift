@@ -7,6 +7,8 @@ struct EgressGuardApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarContentView(model: model)
+                .preferredColorScheme(model.settings.interfaceTheme.colorScheme)
+                .id(model.settings.interfaceTheme)
         } label: {
             HStack(alignment: .center, spacing: 4) {
                 Image(systemName: model.status.menuBarSymbolName)
