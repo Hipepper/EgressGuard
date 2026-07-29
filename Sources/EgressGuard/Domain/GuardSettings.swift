@@ -35,6 +35,24 @@ struct GuardSettings: Codable, Equatable, Sendable {
         NetworkPolicy(settings: self).hasConstraints
     }
 
+    var isProtectionActive: Bool {
+        if !rules.isEmpty {
+            return hasPolicyConstraints
+        }
+        return isProtectionEnabled && hasPolicyConstraints
+    }
+
+    mutating func setProtectionActive(_ isActive: Bool) {
+        if rules.isEmpty {
+            isProtectionEnabled = isActive
+        } else {
+            for index in rules.indices {
+                rules[index].isEnabled = isActive
+            }
+            isProtectionEnabled = isActive
+        }
+    }
+
     mutating func addRule(_ rule: GuardRule = GuardRule()) {
         rules.insert(rule, at: 0)
     }

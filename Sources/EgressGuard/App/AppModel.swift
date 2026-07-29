@@ -16,6 +16,7 @@ final class AppModel {
     var selectedSettingsSection: SettingsSection? = .overview
     var lastErrorMessage: String?
     var policyMessage: String?
+    var ruleTestStatuses: [UUID: RuleTestStatus] = [:]
 
     private let providerCoordinator: ProviderCoordinator
     private let directProviderCoordinator: ProviderCoordinator
@@ -101,7 +102,7 @@ final class AppModel {
             directIdentity = directResult
             await notificationService.notify(changes: changes)
 
-            if settings.isProtectionEnabled && settings.hasPolicyConstraints {
+            if settings.isProtectionActive {
                 await guardEngine.updateConfiguration(engineConfiguration)
                 let evaluation = PolicyEvaluator().evaluate(
                     proxy: policyIdentity,
@@ -125,7 +126,7 @@ final class AppModel {
                     apply(mitigated.state)
                 }
             } else {
-                policyMessage = settings.isProtectionEnabled ? "请先配置至少一条允许规则" : nil
+                policyMessage = settings.hasPolicyConstraints ? "保护规则已停用" : "请先配置至少一条完整规则"
                 status = .healthy
             }
         }
@@ -181,6 +182,23 @@ final class AppModel {
         protectedApplications.remove(atOffsets: offsets)
     }
 
+    func testRule(_ id: UUID) {
+        guard let rule = settings.rules.first(where: { $0.id == id }), rule.application != nil else {
+            ruleTestStatuses[id] = .unavailable
+            return
+        }
+        ruleTestStatuses[id] = .running
+        Task {
+            await notificationService.requestAuthorization()
+            guard let result = await actionExecutor.test(rule: rule) else {
+                ruleTestStatuses[id] = .unavailable
+                return
+            }
+            ruleTestStatuses[id] = result.succeeded ? .succeeded(result.detail) : .failed(result.detail)
+            await notificationService.notify(actionResults: [result])
+        }
+    }
+
     private var engineConfiguration: GuardEngineConfiguration {
         GuardEngineConfiguration(
             violationThreshold: settings.violationThreshold,
@@ -198,6 +216,21 @@ final class AppModel {
         case let .recovering(count): status = .recovering(count: count)
         case .providerUnavailable: status = .unavailable
         case .paused: status = .paused
+        }
+    }
+}
+
+enum RuleTestStatus: Equatable, Sendable {
+    case running
+    case succeeded(String)
+    case failed(String)
+    case unavailable
+
+    var detail: String? {
+        switch self {
+        case let .succeeded(detail), let .failed(detail): detail
+        case .running: "正在直接测试规则配置的应用动作…"
+        case .unavailable: "规则尚未选择目标应用"
         }
     }
 }

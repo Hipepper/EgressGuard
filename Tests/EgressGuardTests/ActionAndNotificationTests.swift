@@ -27,6 +27,31 @@ struct ActionAndNotificationTests {
         #expect(await performer.actions == ["close:com.example.Target"])
     }
 
+    @Test("Rule test directly performs its configured action even when the rule is disabled")
+    func testsConfiguredActionDirectly() async {
+        let performer = RecordingApplicationPerformer()
+        let executor = RuleActionExecutor(performer: performer)
+        let rule = GuardRule(
+            comparison: .isEqual,
+            condition: .cidr,
+            value: "103.54.0.0/16",
+            perspective: .proxy,
+            action: .close,
+            application: .init(
+                bundleIdentifier: "com.example.NetNewsWire",
+                displayName: "NetNewsWire",
+                url: nil
+            ),
+            isEnabled: false
+        )
+
+        let result = await executor.test(rule: rule)
+
+        #expect(result?.succeeded == true)
+        #expect(result?.detail == "测试执行成功")
+        #expect(await performer.actions == ["close:com.example.NetNewsWire"])
+    }
+
     @Test("IP change detector ignores the initial sample")
     func ignoresInitialSample() {
         let current = identity("58.240.164.101")
@@ -52,13 +77,13 @@ struct ActionAndNotificationTests {
 private actor RecordingApplicationPerformer: ApplicationActionPerforming {
     private(set) var actions: [String] = []
 
-    func open(_ application: GuardRule.Application) async -> Bool {
+    func open(_ application: GuardRule.Application) async -> ActionExecutionOutcome {
         actions.append("open:\(application.bundleIdentifier)")
-        return true
+        return .success("测试执行成功")
     }
 
-    func close(_ application: GuardRule.Application) async -> Bool {
+    func close(_ application: GuardRule.Application) async -> ActionExecutionOutcome {
         actions.append("close:\(application.bundleIdentifier)")
-        return true
+        return .success("测试执行成功")
     }
 }

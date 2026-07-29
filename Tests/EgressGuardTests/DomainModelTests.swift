@@ -65,6 +65,26 @@ struct DomainModelTests {
         #expect(settings.hasPolicyConstraints == false)
     }
 
+    @Test("An enabled complete visual rule activates protection without the legacy master switch")
+    func enabledVisualRuleActivatesProtection() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(
+            comparison: .isEqual,
+            condition: .cidr,
+            value: "103.54.0.0/16",
+            perspective: .proxy,
+            action: .close,
+            application: .init(
+                bundleIdentifier: "com.example.NetNewsWire",
+                displayName: "NetNewsWire",
+                url: nil
+            ),
+            isEnabled: true
+        )]
+
+        #expect(settings.isProtectionActive == true)
+    }
+
     @Test("Legacy settings decode with safe menu bar defaults")
     func legacySettingsDecode() throws {
         let json = #"""

@@ -61,7 +61,7 @@ struct SystemExitNotificationService: ExitNotificationSending {
         let content = UNMutableNotificationContent()
         content.title = "保护规则已执行"
         content.body = actionResults.map {
-            "\($0.action.title) \($0.applicationName)：\($0.succeeded ? "成功" : "失败")"
+            "\($0.action.title) \($0.applicationName)：\($0.succeeded ? "成功" : "失败")。\($0.detail)"
         }.joined(separator: "；")
         content.sound = .default
         try? await UNUserNotificationCenter.current().add(

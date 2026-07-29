@@ -6,12 +6,16 @@ struct SettingsView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SettingsSidebar(selection: $model.selectedSettingsSection)
+            SettingsSidebar(selection: $model.selectedSettingsSection, isProtectionActive: model.settings.isProtectionActive)
                 .frame(width: 228)
             Group {
                 switch model.selectedSettingsSection ?? .overview {
                 case .overview: OverviewDashboardView(model: model)
-                case .rules: RulesSettingsView(settings: $model.settings)
+                case .rules: RulesSettingsView(
+                    settings: $model.settings,
+                    testStatuses: model.ruleTestStatuses,
+                    onTest: model.testRule
+                )
                 case .applications: ApplicationPickerView(model: model)
                 case .notifications: PlaceholderSettingsView(title: "通知", message: "飞书 Webhook 与邮件通知将在通知阶段接入。")
                 case .history: PlaceholderSettingsView(title: "历史记录", message: "检测与处置历史将在持久化阶段接入。")
@@ -27,6 +31,7 @@ struct SettingsView: View {
 
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection?
+    let isProtectionActive: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -72,9 +77,10 @@ private struct SettingsSidebar: View {
 
             Spacer()
             HStack(spacing: 8) {
-                Circle().fill(.green).frame(width: 7, height: 7)
-                    .shadow(color: .green.opacity(0.8), radius: 5)
-                Text("本地保护服务运行中").font(.caption).foregroundStyle(.white.opacity(0.48))
+                Circle().fill(isProtectionActive ? .green : .orange).frame(width: 7, height: 7)
+                    .shadow(color: (isProtectionActive ? Color.green : Color.orange).opacity(0.8), radius: 5)
+                Text(isProtectionActive ? "出口保护已启用" : "出口保护未启用")
+                    .font(.caption).foregroundStyle(.white.opacity(0.48))
             }
             .padding(20)
         }
@@ -147,7 +153,7 @@ private struct OverviewDashboardView: View {
     private var metricCards: some View {
         HStack(spacing: 18) {
             MetricCard(icon: model.status.symbolName, value: model.status.title,
-                       label: model.settings.isProtectionEnabled ? "出口保护已启用" : "出口保护未启用",
+                       label: model.settings.isProtectionActive ? "出口保护已启用" : "出口保护未启用",
                        colors: [DashboardPalette.coral, DashboardPalette.pink])
             MetricCard(icon: "globe.asia.australia.fill", value: model.identity?.ipv4Address ?? "等待检测",
                        label: model.identity.map { "\($0.countryFlag) \($0.countryName ?? "未知地区")" } ?? "当前公网 IPv4",
@@ -171,7 +177,7 @@ private struct OverviewDashboardView: View {
     private var policyPanel: some View {
         DashboardPanel(title: "保护策略", subtitle: policySummary) {
             VStack(alignment: .leading, spacing: 16) {
-                Toggle(isOn: $model.settings.isProtectionEnabled) {
+                Toggle(isOn: protectionBinding) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("启用出口保护").font(.system(size: 14, weight: .semibold))
                         Text(model.settings.hasPolicyConstraints ? "异常时按规则处置" : "请先添加保护规则")
@@ -230,6 +236,13 @@ private struct OverviewDashboardView: View {
             return model.settings.rules.filter(\.isEnabled).count
         }
         return model.settings.allowedIPs.count + model.settings.allowedCIDRs.count + model.settings.allowedCountryCodes.count + model.settings.allowedASNs.count
+    }
+
+    private var protectionBinding: Binding<Bool> {
+        Binding(
+            get: { model.settings.isProtectionActive },
+            set: { model.settings.setProtectionActive($0) }
+        )
     }
 
     private var policySummary: String {
@@ -328,6 +341,8 @@ private enum DashboardPalette {
 
 private struct RulesSettingsView: View {
     @Binding var settings: GuardSettings
+    let testStatuses: [UUID: RuleTestStatus]
+    let onTest: (UUID) -> Void
     @State private var expandedRuleID: UUID?
     @State private var countryRuleID: UUID?
     @State private var applicationRuleID: UUID?
@@ -353,6 +368,8 @@ private struct RulesSettingsView: View {
                                     },
                                     onChooseCountry: { countryRuleID = rule.id },
                                     onChooseApplication: { applicationRuleID = rule.id },
+                                    testStatus: testStatuses[rule.id],
+                                    onTest: { onTest(rule.id) },
                                     onDelete: { removeRule(rule.id) }
                                 )
                             }
@@ -389,6 +406,15 @@ private struct RulesSettingsView: View {
                     .foregroundStyle(.white.opacity(0.52))
             }
             Spacer()
+            Label(
+                settings.isProtectionActive ? "保护已启用" : "保护未启用",
+                systemImage: settings.isProtectionActive ? "shield.checkered" : "shield.slash"
+            )
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(settings.isProtectionActive ? Color.green : DashboardPalette.coral)
+            .padding(.horizontal, 12)
+            .frame(height: 40)
+            .background(.white.opacity(0.06), in: Capsule())
             Button(action: addRule) {
                 Label("新增规则", systemImage: "plus")
                     .font(.system(size: 13, weight: .semibold))
@@ -469,6 +495,8 @@ private struct RuleStackCard: View {
     let onToggleExpansion: () -> Void
     let onChooseCountry: () -> Void
     let onChooseApplication: () -> Void
+    let testStatus: RuleTestStatus?
+    let onTest: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -580,6 +608,15 @@ private struct RuleStackCard: View {
                 }
                 .buttonStyle(.plain)
 
+                Button(action: onTest) {
+                    Label(testButtonTitle, systemImage: testButtonSymbol)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                }
+                .buttonStyle(.bordered)
+                .tint(testButtonTint)
+                .disabled(rule.application == nil || testStatus == .running)
+                .help("直接测试该规则配置的应用动作，不判断当前出口条件")
+
                 Button(role: .destructive, action: onDelete) {
                     Label("删除规则", systemImage: "trash")
                 }
@@ -591,8 +628,42 @@ private struct RuleStackCard: View {
                 Label(validationMessage, systemImage: "exclamationmark.circle.fill")
                     .font(.caption).foregroundStyle(DashboardPalette.coral)
             }
+            if let testStatus, let detail = testStatus.detail {
+                Label(detail, systemImage: testButtonSymbol)
+                    .font(.caption)
+                    .foregroundStyle(testButtonTint)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(18)
+    }
+
+    private var testButtonTitle: String {
+        switch testStatus {
+        case .running: "TESTING"
+        case .succeeded: "SUCCESS"
+        case .failed: "FAILED"
+        case .unavailable: "NO APP"
+        case nil: "TEST"
+        }
+    }
+
+    private var testButtonSymbol: String {
+        switch testStatus {
+        case .running: "hourglass"
+        case .succeeded: "checkmark.circle.fill"
+        case .failed, .unavailable: "xmark.circle.fill"
+        case nil: "play.fill"
+        }
+    }
+
+    private var testButtonTint: Color {
+        switch testStatus {
+        case .succeeded: .green
+        case .failed, .unavailable: DashboardPalette.coral
+        default: DashboardPalette.purple
+        }
     }
 
     @ViewBuilder private var conditionEditor: some View {
