@@ -3,6 +3,33 @@ import Testing
 
 @Suite("Local network monitor")
 struct LocalNetworkMonitorTests {
+    @Test("Interface kinds use system metadata and safe name fallbacks")
+    func classifiesInterfaceKinds() {
+        #expect(LocalNetworkInterfaceKind.classify(name: "en0", displayName: "Wi-Fi", interfaceType: "IEEE80211") == .wifi)
+        #expect(LocalNetworkInterfaceKind.classify(name: "en7", displayName: "USB 10/100/1000 LAN", interfaceType: "Ethernet") == .ethernet)
+        #expect(LocalNetworkInterfaceKind.classify(name: "utun8", displayName: nil, interfaceType: nil) == .tunnel)
+        #expect(LocalNetworkInterfaceKind.classify(name: "bridge0", displayName: nil, interfaceType: nil) == .bridge)
+        #expect(LocalNetworkInterfaceKind.classify(name: "awdl0", displayName: nil, interfaceType: nil) == .systemVirtual)
+        #expect(LocalNetworkInterfaceKind.tunnel.sourceDescription.contains("无法确定具体应用"))
+    }
+
+    @Test("Routes distinguish policy rules from direct and neighbor entries")
+    func classifiesRouteKinds() {
+        let output = """
+        Destination Gateway Flags Netif Expire
+        default 10.88.32.1 UGScg en0
+        10.10/16 10.220.0.1 UGSc en7
+        2/7 198.18.0.1 UGSc utun8
+        10.88.32/21 link#15 UCS en0 !
+        10.88.32.5 ae:d:39:26:d7:2 UHLWI en0 1005
+        """
+
+        let routes = LocalNetworkOutputParser.routes(from: output)
+
+        #expect(routes.map(\.kind) == [.defaultRoute, .staticGateway, .tunnelPolicy, .directNetwork, .neighborCache])
+        #expect(routes.filter(\.isPolicyRoute).count == 3)
+    }
+
     @Test("Monitor combines interface and route command output")
     func buildsSnapshot() async throws {
         let monitor = SystemLocalNetworkMonitor(

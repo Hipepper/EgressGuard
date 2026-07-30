@@ -1508,11 +1508,16 @@ private struct LocalNetworkMonitorView: View {
     @State private var snapshot = LocalNetworkSnapshot.empty
     @State private var isRefreshing = false
     @State private var errorMessage: String?
-    @State private var showsAllRoutes = false
+    @State private var routeFilter: LocalRouteFilter = .policy
     private let monitor = SystemLocalNetworkMonitor()
 
     private var displayedRoutes: [LocalRouteEntry] {
-        showsAllRoutes ? snapshot.routes : snapshot.routes.filter(\.isStatic)
+        switch routeFilter {
+        case .policy: snapshot.routes.filter(\.isPolicyRoute)
+        case .direct: snapshot.routes.filter { $0.kind == .directNetwork || $0.kind == .other }
+        case .neighbors: snapshot.routes.filter { $0.kind == .neighborCache }
+        case .all: snapshot.routes
+        }
     }
 
     var body: some View {
@@ -1559,7 +1564,7 @@ private struct LocalNetworkMonitorView: View {
     private var summary: some View {
         HStack(spacing: 12) {
             networkMetric("活动网卡", value: snapshot.interfaces.filter(\.isActive).count, icon: "network", tint: DashboardPalette.blue)
-            networkMetric("静态规则", value: snapshot.routes.filter(\.isStatic).count, icon: "point.3.connected.trianglepath.dotted", tint: DashboardPalette.coral)
+            networkMetric("策略路由", value: snapshot.routes.filter(\.isPolicyRoute).count, icon: "point.3.connected.trianglepath.dotted", tint: DashboardPalette.coral)
             networkMetric("全部路由", value: snapshot.routes.count, icon: "arrow.triangle.branch", tint: DashboardPalette.purple)
         }
     }
@@ -1580,30 +1585,44 @@ private struct LocalNetworkMonitorView: View {
     }
 
     private var interfacePanel: some View {
-        DashboardPanel(title: "本地网卡", subtitle: "地址来自 ifconfig；活动状态由 UP/RUNNING 和系统 status 综合判断") {
+        DashboardPanel(title: "本地网卡", subtitle: "类型结合系统硬件端口元数据和 BSD 接口名称判断；来源无法确定时会明确标注") {
             if snapshot.interfaces.isEmpty {
                 emptyState("尚未读取到网卡", icon: "network.slash")
             } else {
                 VStack(spacing: 0) {
                     ForEach(snapshot.interfaces) { interface in
                         HStack(alignment: .top, spacing: 12) {
-                            Circle()
-                                .fill(interface.isActive ? Color.green : Color.secondary.opacity(0.35))
-                                .frame(width: 8, height: 8)
-                                .padding(.top, 6)
+                            Image(systemName: interface.kind.symbolName)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(interface.isActive ? DashboardPalette.blue : Color.secondary)
+                                .frame(width: 24, height: 24)
                             VStack(alignment: .leading, spacing: 5) {
-                                HStack {
+                                HStack(spacing: 8) {
                                     Text(interface.name).font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                    Text(interface.kind.title)
+                                        .font(.caption2).foregroundStyle(DashboardPalette.blue)
+                                        .padding(.horizontal, 6).frame(height: 18)
+                                        .background(DashboardPalette.blue.opacity(0.10), in: Capsule())
                                     Text(interface.isActive ? "活动" : "未活动")
                                         .font(.caption2).foregroundStyle(interface.isActive ? .green : .secondary)
+                                }
+                                if let displayName = interface.displayName, displayName != interface.name {
+                                    Text(displayName)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(DashboardPalette.text.opacity(0.68))
                                 }
                                 Text(interface.addresses.isEmpty ? "无 IP 地址" : interface.addresses.joined(separator: "  ·  "))
                                     .font(.system(size: 12, design: .monospaced))
                                     .foregroundStyle(DashboardPalette.text.opacity(0.58))
                                     .textSelection(.enabled)
-                                if let hardwareAddress = interface.hardwareAddress {
-                                    Text(hardwareAddress).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                HStack(spacing: 8) {
+                                    Text(interface.kind.sourceDescription)
+                                    if let hardwareAddress = interface.hardwareAddress {
+                                        Text("·")
+                                        Text(hardwareAddress).fontDesign(.monospaced)
+                                    }
                                 }
+                                .font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer()
                         }
@@ -1616,15 +1635,16 @@ private struct LocalNetworkMonitorView: View {
     }
 
     private var routePanel: some View {
-        DashboardPanel(title: "流量路由", subtitle: "静态规则包括通过 route add 等方式写入的网关路由") {
+        DashboardPanel(title: "流量路由", subtitle: "单个 IP 条目通常是动态邻居缓存，并非把 CIDR 展开；默认只展示影响流量走向的策略路由") {
             VStack(spacing: 12) {
                 HStack {
-                    Picker("路由范围", selection: $showsAllRoutes) {
-                        Text("静态规则").tag(false)
-                        Text("全部路由").tag(true)
+                    Picker("路由范围", selection: $routeFilter) {
+                        ForEach(LocalRouteFilter.allCases) { filter in
+                            Text(filter.title).tag(filter)
+                        }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 230)
+                    .frame(width: 350)
                     Spacer()
                     if snapshot.checkedAt != .distantPast {
                         Text("更新于 \(snapshot.checkedAt.formatted(date: .omitted, time: .standard))")
@@ -1637,15 +1657,20 @@ private struct LocalNetworkMonitorView: View {
                         .foregroundStyle(DashboardPalette.coral)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else if displayedRoutes.isEmpty {
-                    emptyState(showsAllRoutes ? "没有读取到 IPv4 路由" : "没有检测到静态网关规则", icon: "arrow.triangle.branch")
+                    emptyState(routeFilter.emptyMessage, icon: "arrow.triangle.branch")
                 } else {
                     VStack(spacing: 0) {
                         ForEach(displayedRoutes) { route in
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(route.destination)
-                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                    Text(route.flags)
+                                    HStack(spacing: 7) {
+                                        Text(route.destination)
+                                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        Text(route.kind.title)
+                                            .font(.caption2)
+                                            .foregroundStyle(route.kind == .neighborCache ? Color.secondary : DashboardPalette.coral)
+                                    }
+                                    Text("flags \(route.flags)")
                                         .font(.caption2.monospaced()).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -1689,6 +1714,33 @@ private struct LocalNetworkMonitorView: View {
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private enum LocalRouteFilter: String, CaseIterable, Identifiable {
+    case policy
+    case direct
+    case neighbors
+    case all
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .policy: "策略"
+        case .direct: "直连"
+        case .neighbors: "邻居"
+        case .all: "全部"
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .policy: "没有检测到默认、静态或 TUN 策略路由"
+        case .direct: "没有检测到直连网段"
+        case .neighbors: "当前没有动态邻居缓存"
+        case .all: "没有读取到 IPv4 路由"
         }
     }
 }
