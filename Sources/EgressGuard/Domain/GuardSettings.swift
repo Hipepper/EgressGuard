@@ -78,6 +78,10 @@ struct GuardSettings: Codable, Equatable, Sendable {
         checkInterval = max(1, value * unit.secondsMultiplier)
     }
 
+    mutating func setCheckIntervalUnit(_ unit: RefreshIntervalUnit) {
+        setCheckInterval(value: checkIntervalValue, unit: unit)
+    }
+
     var showsIPInMenuBar: Bool {
         get { menuBarIPDisplayMode != .iconOnly }
         set { menuBarIPDisplayMode = newValue ? .fullIPv4 : .iconOnly }

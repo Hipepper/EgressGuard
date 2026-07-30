@@ -1190,7 +1190,7 @@ private struct PreferencesSettingsView: View {
                                 .padding(.horizontal, 12)
                                 .frame(width: 108, height: 38)
                                 .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 9))
-                            Picker("单位", selection: $settings.checkIntervalUnit) {
+                            Picker("单位", selection: intervalUnit) {
                                 ForEach(RefreshIntervalUnit.allCases) { unit in
                                     Text(unit.title).tag(unit)
                                 }
@@ -1273,6 +1273,13 @@ private struct PreferencesSettingsView: View {
         Binding(
             get: { settings.checkIntervalValue },
             set: { settings.setCheckInterval(value: $0, unit: settings.checkIntervalUnit) }
+        )
+    }
+
+    private var intervalUnit: Binding<RefreshIntervalUnit> {
+        Binding(
+            get: { settings.checkIntervalUnit },
+            set: { settings.setCheckIntervalUnit($0) }
         )
     }
 

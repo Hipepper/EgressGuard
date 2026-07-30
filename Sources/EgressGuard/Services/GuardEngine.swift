@@ -52,13 +52,6 @@ actor GuardEngine {
         }
     }
 
-    func processImmediately(_ evaluation: PolicyEvaluation) -> GuardEngineUpdate {
-        guard evaluation.decision == .violated else { return process(evaluation) }
-        if case .paused = state { return GuardEngineUpdate(state: state, action: nil) }
-        state = .confirmedViolation
-        return GuardEngineUpdate(state: state, action: .confirmViolation(evaluation.violations))
-    }
-
     func providerUnavailable() -> GuardEngineUpdate {
         if state != .providerUnavailable { stateBeforeUnavailable = state }
         state = .providerUnavailable

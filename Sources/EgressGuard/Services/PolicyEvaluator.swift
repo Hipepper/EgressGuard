@@ -75,16 +75,21 @@ struct PolicyEvaluator: Sendable {
         return PolicyEvaluation(decision: decision, violations: violations, missingFields: missingFields)
     }
     func evaluate(
-        proxy: ExitIdentity,
+        proxy: ExitIdentity?,
         direct: ExitIdentity?,
         against policy: NetworkPolicy
     ) -> PolicyEvaluation {
-        guard policy.usesRuleStack else { return evaluate(proxy, against: policy) }
+        guard policy.usesRuleStack else {
+            guard let proxy else {
+                return PolicyEvaluation(decision: .indeterminate, violations: [], missingFields: [.proxyExit])
+            }
+            return evaluate(proxy, against: policy)
+        }
         return evaluateRuleStack(proxy: proxy, direct: direct, rules: policy.rules)
     }
 
     private func evaluateRuleStack(
-        proxy: ExitIdentity,
+        proxy: ExitIdentity?,
         direct: ExitIdentity?,
         rules: [GuardRule]
     ) -> PolicyEvaluation {
@@ -104,14 +109,24 @@ struct PolicyEvaluator: Sendable {
         for rule in rules {
             let identities: [ExitIdentity]
             switch rule.perspective {
-            case .proxy: identities = [proxy]
+            case .proxy:
+                guard let proxy else {
+                    missingFields.append(.proxyExit)
+                    continue
+                }
+                identities = [proxy]
             case .direct:
                 guard let direct else {
                     missingFields.append(.directExit)
                     continue
                 }
                 identities = [direct]
-            case .any: identities = [proxy] + [direct].compactMap { $0 }
+            case .any:
+                guard let proxy else {
+                    missingFields.append(.proxyExit)
+                    continue
+                }
+                identities = [proxy] + [direct].compactMap { $0 }
             }
 
             let triggers: [Bool] = tryRuleMatches(rule, identities: identities, missingFields: &missingFields)

@@ -115,6 +115,21 @@ struct ProviderTests {
         }
     }
 
+    @Test("Coordinator retries a transient provider up to three attempts")
+    func retriesTransientFailure() async throws {
+        let provider = ScriptedProvider(results: [
+            .failure(.httpStatus(503)),
+            .failure(.invalidResponse),
+            .success(sampleIdentity(provider: "eventual"))
+        ])
+        let coordinator = ProviderCoordinator(providers: [provider], maximumAttempts: 3)
+
+        let identity = try await coordinator.fetchIdentity()
+
+        #expect(identity.provider == "eventual")
+        #expect(await provider.attemptCount == 3)
+    }
+
     private func sampleIdentity(provider: String) -> ExitIdentity {
         ExitIdentity(
             ip: "203.0.113.10",
@@ -149,5 +164,21 @@ private struct StubProvider: ExitIPProvider {
 
     func fetchIdentity() async throws -> ExitIdentity {
         try result.get()
+    }
+}
+
+private actor ScriptedProvider: ExitIPProvider {
+    nonisolated let id = "scripted"
+    private let results: [Result<ExitIdentity, ExitIPProviderError>]
+    private(set) var attemptCount = 0
+
+    init(results: [Result<ExitIdentity, ExitIPProviderError>]) {
+        self.results = results
+    }
+
+    func fetchIdentity() async throws -> ExitIdentity {
+        let result = results[min(attemptCount, results.count - 1)]
+        attemptCount += 1
+        return try result.get()
     }
 }

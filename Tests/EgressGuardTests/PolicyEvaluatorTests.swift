@@ -65,6 +65,26 @@ struct PolicyEvaluatorTests {
         #expect(result.decision == .allowed)
     }
 
+    @Test("Missing proxy identity is indeterminate instead of using direct identity")
+    func missingProxyIdentityIsIndeterminate() {
+        var settings = GuardSettings.defaults
+        settings.rules = [GuardRule(
+            comparison: .isNot,
+            condition: .ip,
+            value: "203.0.113.10",
+            perspective: .proxy
+        )]
+
+        let result = PolicyEvaluator().evaluate(
+            proxy: nil,
+            direct: identity(ip: "198.51.100.2"),
+            against: NetworkPolicy(settings: settings)
+        )
+
+        #expect(result.decision == .indeterminate)
+        #expect(result.missingFields == [.proxyExit])
+    }
+
     @Test("Any-exit rule triggers when either identity matches")
     func anyPerspectiveRule() {
         var settings = GuardSettings.defaults

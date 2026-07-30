@@ -29,6 +29,7 @@ struct PolicyEvaluation: Equatable, Sendable {
 enum IdentityField: String, Equatable, Sendable {
     case country
     case asn
+    case proxyExit
     case directExit
 }
 

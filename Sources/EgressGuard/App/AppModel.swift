@@ -133,7 +133,7 @@ final class AppModel {
             async let proxyFetch = try? providerCoordinator.fetchIdentity()
             async let directFetch = try? directProviderCoordinator.fetchIdentity()
             let (proxyResult, directResult) = await (proxyFetch, directFetch)
-            guard let policyIdentity = proxyResult ?? directResult else {
+            guard proxyResult != nil || directResult != nil else {
                 lastErrorMessage = ExitIPProviderError.allProvidersFailed.localizedDescription
                 status = .unavailable
                 appendLog(
@@ -181,16 +181,20 @@ final class AppModel {
             if settings.isProtectionActive {
                 await guardEngine.updateConfiguration(engineConfiguration)
                 let evaluation = PolicyEvaluator().evaluate(
-                    proxy: policyIdentity,
+                    proxy: proxyResult,
                     direct: directResult,
                     against: NetworkPolicy(settings: settings)
                 )
                 policyMessage = evaluation.violations.first?.description ?? evaluation.missingFields.first.map {
-                    "检测源未提供\($0 == .asn ? " ASN" : ($0 == .directExit ? "直连出口" : "国家/地区"))，暂不执行处置"
+                    let field = switch $0 {
+                    case .asn: " ASN"
+                    case .country: "国家/地区"
+                    case .proxyExit: "代理出口"
+                    case .directExit: "直连出口"
+                    }
+                    return "检测源未提供\(field)，暂不执行处置"
                 }
-                let update = isManual
-                    ? await guardEngine.processImmediately(evaluation)
-                    : await guardEngine.process(evaluation)
+                let update = await guardEngine.process(evaluation)
                 apply(update.state)
                 if case .confirmViolation = update.action {
                     appendLog(
@@ -269,7 +273,7 @@ final class AppModel {
                 try? await Task.sleep(for: .milliseconds(200))
             }
             guard !Task.isCancelled, self.status != .paused else { return }
-            self.checkNow(isManual: true)
+            self.checkNow(isManual: false)
         }
     }
 

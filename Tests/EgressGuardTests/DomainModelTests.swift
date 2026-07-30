@@ -143,6 +143,17 @@ struct DomainModelTests {
         #expect(settings.checkIntervalUnit == .minutes)
     }
 
+    @Test("Changing refresh unit preserves the user-entered value")
+    func refreshUnitChangePreservesValue() {
+        var settings = GuardSettings.defaults
+
+        settings.setCheckInterval(value: 2, unit: .seconds)
+        settings.setCheckIntervalUnit(.minutes)
+
+        #expect(settings.checkIntervalValue == 2)
+        #expect(settings.checkInterval == 120)
+    }
+
     @Test("New protection rules are inserted at the top")
     func newRulesAreNewestFirst() {
         var settings = GuardSettings.defaults
