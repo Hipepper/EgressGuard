@@ -122,6 +122,7 @@ struct DomainModelTests {
     func settingsLayoutMetrics() {
         #expect(SettingsLayoutMetrics.selectionAnimationDuration <= 0.18)
         #expect(SettingsLayoutMetrics.themeCommitDelay <= 0.12)
+        #expect(SettingsLayoutMetrics.localNetworkInitialLoadDelay > SettingsLayoutMetrics.selectionAnimationDuration)
         #expect(SettingsLayoutMetrics.overviewHeaderHeight == 170)
         #expect(SettingsLayoutMetrics.contentCornerRadius == 22)
     }

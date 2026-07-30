@@ -1535,7 +1535,7 @@ private struct LocalNetworkMonitorView: View {
                 .padding(.bottom, 34)
             }
         }
-        .task { await monitorContinuously() }
+        .task { await startMonitoringAfterNavigation() }
     }
 
     private var header: some View {
@@ -1589,7 +1589,7 @@ private struct LocalNetworkMonitorView: View {
             if snapshot.interfaces.isEmpty {
                 emptyState("尚未读取到网卡", icon: "network.slash")
             } else {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     ForEach(snapshot.interfaces) { interface in
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: interface.kind.symbolName)
@@ -1627,7 +1627,7 @@ private struct LocalNetworkMonitorView: View {
                             Spacer()
                         }
                         .padding(.vertical, 9)
-                        if interface.id != snapshot.interfaces.last?.id { Divider().overlay(DashboardPalette.border) }
+                        Divider().overlay(DashboardPalette.border)
                     }
                 }
             }
@@ -1659,7 +1659,7 @@ private struct LocalNetworkMonitorView: View {
                 } else if displayedRoutes.isEmpty {
                     emptyState(routeFilter.emptyMessage, icon: "arrow.triangle.branch")
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVStack(spacing: 0) {
                         ForEach(displayedRoutes) { route in
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -1683,7 +1683,7 @@ private struct LocalNetworkMonitorView: View {
                                     .frame(width: 52, alignment: .trailing)
                             }
                             .padding(.vertical, 10)
-                            if route.id != displayedRoutes.last?.id { Divider().overlay(DashboardPalette.border) }
+                            Divider().overlay(DashboardPalette.border)
                         }
                     }
                 }
@@ -1705,13 +1705,27 @@ private struct LocalNetworkMonitorView: View {
         }
     }
 
+    private func startMonitoringAfterNavigation() async {
+        do {
+            try await Task.sleep(for: .seconds(SettingsLayoutMetrics.localNetworkInitialLoadDelay))
+        } catch {
+            return
+        }
+        await monitorContinuously()
+    }
+
     private func refresh() async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            snapshot = try await monitor.snapshot()
-            errorMessage = nil
+            let refreshedSnapshot = try await monitor.snapshot()
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                snapshot = refreshedSnapshot
+                errorMessage = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
