@@ -35,6 +35,7 @@ struct MenuBarContentView: View {
                     systemImage: "slider.horizontal.3",
                     tint: .blue
                 ) {
+                    NSApplication.shared.setActivationPolicy(.regular)
                     NSApplication.shared.activate(ignoringOtherApps: true)
                     openSettings()
                 }

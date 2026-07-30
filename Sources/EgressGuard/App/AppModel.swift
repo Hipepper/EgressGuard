@@ -115,6 +115,15 @@ final class AppModel {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
+    var showsMenuBarStatusIcon: Bool {
+        guard !showsMenuBarActivityIndicator else { return false }
+        return settings.showsStatusIconInMenuBar || menuBarText == nil
+    }
+
+    var showsMenuBarActivityIndicator: Bool {
+        status.showsMenuBarActivityIndicator(statusIconPreference: settings.showsStatusIconInMenuBar)
+    }
+
     func checkNow() {
         checkNow(isManual: true)
     }

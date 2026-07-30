@@ -10,6 +10,13 @@ struct DomainModelTests {
         #expect(GuardDisplayStatus.violation.menuBarSymbolName == "exclamationmark.shield.fill")
     }
 
+    @Test("Checking replaces hidden shield and IP text with activity indicator")
+    func checkingUsesMenuBarActivityIndicator() {
+        #expect(GuardDisplayStatus.checking.showsMenuBarActivityIndicator(statusIconPreference: false))
+        #expect(!GuardDisplayStatus.checking.showsMenuBarActivityIndicator(statusIconPreference: true))
+        #expect(!GuardDisplayStatus.healthy.showsMenuBarActivityIndicator(statusIconPreference: false))
+    }
+
     @Test("Application catalog includes closed apps and marks running apps")
     func applicationCatalogMerge() {
         let installed = [
@@ -87,6 +94,7 @@ struct DomainModelTests {
         #expect(GuardSettings.defaults.recoveryThreshold == 2)
         #expect(GuardSettings.defaults.isProtectionEnabled == false)
         #expect(GuardSettings.defaults.menuBarIPDisplayMode == .iconOnly)
+        #expect(GuardSettings.defaults.showsStatusIconInMenuBar == true)
         #expect(GuardSettings.defaults.showsCountryFlagInMenuBar == false)
         #expect(GuardSettings.defaults.checkIntervalUnit == .seconds)
         #expect(GuardSettings.defaults.menuBarCountryDisplayMode == .hidden)
@@ -215,6 +223,7 @@ struct DomainModelTests {
         let settings = try JSONDecoder().decode(GuardSettings.self, from: Data(json.utf8))
         #expect(settings.allowedCountryCodes == ["SG"])
         #expect(settings.menuBarIPDisplayMode == .iconOnly)
+        #expect(settings.showsStatusIconInMenuBar == true)
         #expect(settings.showsCountryFlagInMenuBar == false)
         #expect(settings.checkIntervalUnit == .seconds)
         #expect(settings.menuBarCountryDisplayMode == .hidden)

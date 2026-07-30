@@ -13,6 +13,7 @@ struct GuardSettings: Codable, Equatable, Sendable {
     var allowedASNs: [String]
     var rules: [GuardRule]
     var menuBarIPDisplayMode: MenuBarIPDisplayMode
+    var showsStatusIconInMenuBar: Bool
     var showsCountryFlagInMenuBar: Bool
     var checkIntervalUnit: RefreshIntervalUnit
     var menuBarCountryDisplayMode: MenuBarCountryDisplayMode
@@ -36,6 +37,7 @@ struct GuardSettings: Codable, Equatable, Sendable {
             GuardRule(condition: .country, value: "SG", isEnabled: false)
         ],
         menuBarIPDisplayMode: .iconOnly,
+        showsStatusIconInMenuBar: true,
         showsCountryFlagInMenuBar: false,
         checkIntervalUnit: .seconds,
         menuBarCountryDisplayMode: .hidden,
@@ -163,7 +165,7 @@ extension GuardSettings {
         case isProtectionEnabled, checkInterval, requestTimeout
         case violationThreshold, recoveryThreshold, startupGracePeriod
         case allowedIPs, allowedCIDRs, allowedCountryCodes, allowedASNs, rules
-        case menuBarIPDisplayMode, showsCountryFlagInMenuBar
+        case menuBarIPDisplayMode, showsStatusIconInMenuBar, showsCountryFlagInMenuBar
         case checkIntervalUnit, menuBarCountryDisplayMode, interfaceTheme, email
     }
 
@@ -182,6 +184,7 @@ extension GuardSettings {
             allowedASNs: try container.decode([String].self, forKey: .allowedASNs),
             rules: [],
             menuBarIPDisplayMode: try container.decodeIfPresent(MenuBarIPDisplayMode.self, forKey: .menuBarIPDisplayMode) ?? .iconOnly,
+            showsStatusIconInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsStatusIconInMenuBar) ?? true,
             showsCountryFlagInMenuBar: try container.decodeIfPresent(Bool.self, forKey: .showsCountryFlagInMenuBar) ?? false,
             checkIntervalUnit: try container.decodeIfPresent(RefreshIntervalUnit.self, forKey: .checkIntervalUnit) ?? .seconds,
             menuBarCountryDisplayMode: .hidden,

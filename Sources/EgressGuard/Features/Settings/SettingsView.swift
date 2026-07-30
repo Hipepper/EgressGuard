@@ -1203,9 +1203,19 @@ private struct PreferencesSettingsView: View {
                     DashboardPanel(title: "顶部状态栏展示", subtitle: "控制菜单栏图标右侧显示的出口身份信息") {
                         VStack(spacing: 0) {
                             preferenceRow(
+                                icon: "shield.slash",
+                                title: "显示盾牌状态图标",
+                                subtitle: "关闭后使用出口身份文字作为菜单栏入口"
+                            ) {
+                                Toggle("", isOn: $settings.showsStatusIconInMenuBar).labelsHidden().toggleStyle(.switch)
+                            }
+
+                            Divider().overlay(DashboardPalette.border)
+
+                            preferenceRow(
                                 icon: "network",
                                 title: "显示当前出网 IP",
-                                subtitle: "关闭后仍保留 EgressGuard 状态图标"
+                                subtitle: "在菜单栏中展示当前检测到的出口地址"
                             ) {
                                 Toggle("", isOn: showsIPBinding).labelsHidden().toggleStyle(.switch)
                             }
@@ -1244,11 +1254,13 @@ private struct PreferencesSettingsView: View {
 
                     DashboardPanel(title: "展示预览", subtitle: "顶部状态栏将按照以下组合显示") {
                         HStack(spacing: 10) {
-                            Image(systemName: status.menuBarSymbolName)
-                                .symbolRenderingMode(.monochrome)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(status.color)
-                                .frame(width: 20, height: 20)
+                            if settings.showsStatusIconInMenuBar || menuBarPreview == nil {
+                                Image(systemName: status.menuBarSymbolName)
+                                    .symbolRenderingMode(.monochrome)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(status.color)
+                                    .frame(width: 20, height: 20)
+                            }
                             if let preview = menuBarPreview {
                                 Text(preview)
                                     .font(.system(size: 14, weight: .semibold, design: .monospaced))

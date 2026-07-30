@@ -37,6 +37,10 @@ enum GuardDisplayStatus: Equatable, Sendable {
 
     var menuBarSymbolName: String { symbolName }
 
+    func showsMenuBarActivityIndicator(statusIconPreference: Bool) -> Bool {
+        self == .checking && !statusIconPreference
+    }
+
     var color: Color {
         switch self {
         case .healthy: .green
