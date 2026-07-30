@@ -20,6 +20,7 @@ struct SettingsView: View {
                     testStatuses: model.ruleTestStatuses,
                     onTest: model.testRule
                 )
+                case .localNetwork: LocalNetworkMonitorView()
                 case .notifications: EmailSettingsView(model: model)
                 case .history: RuntimeLogView(model: model)
                 case .preferences: PreferencesSettingsView(
@@ -1500,6 +1501,195 @@ private struct EmailSettingsView: View {
         if case .failed = model.emailTestStatus { return DashboardPalette.coral }
         if case .succeeded = model.emailTestStatus { return .green }
         return DashboardPalette.purple
+    }
+}
+
+private struct LocalNetworkMonitorView: View {
+    @State private var snapshot = LocalNetworkSnapshot.empty
+    @State private var isRefreshing = false
+    @State private var errorMessage: String?
+    @State private var showsAllRoutes = false
+    private let monitor = SystemLocalNetworkMonitor()
+
+    private var displayedRoutes: [LocalRouteEntry] {
+        showsAllRoutes ? snapshot.routes : snapshot.routes.filter(\.isStatic)
+    }
+
+    var body: some View {
+        ZStack {
+            DashboardPalette.canvas.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    header
+                    summary
+                    interfacePanel
+                    routePanel
+                }
+                .padding(.horizontal, 34)
+                .padding(.top, 42)
+                .padding(.bottom, 34)
+            }
+        }
+        .task { await monitorContinuously() }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("本地网络")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Text("只读监看本地网卡和 IPv4 路由表，不修改系统网络配置。")
+                    .font(.system(size: 14))
+                    .foregroundStyle(DashboardPalette.text.opacity(0.52))
+            }
+            Spacer()
+            Button { Task { await refresh() } } label: {
+                Label(isRefreshing ? "读取中" : "立即刷新", systemImage: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .frame(height: 36)
+                    .background(DashboardPalette.glassFill, in: Capsule())
+                    .overlay(Capsule().stroke(DashboardPalette.border))
+            }
+            .buttonStyle(.plain)
+            .disabled(isRefreshing)
+        }
+    }
+
+    private var summary: some View {
+        HStack(spacing: 12) {
+            networkMetric("活动网卡", value: snapshot.interfaces.filter(\.isActive).count, icon: "network", tint: DashboardPalette.blue)
+            networkMetric("静态规则", value: snapshot.routes.filter(\.isStatic).count, icon: "point.3.connected.trianglepath.dotted", tint: DashboardPalette.coral)
+            networkMetric("全部路由", value: snapshot.routes.count, icon: "arrow.triangle.branch", tint: DashboardPalette.purple)
+        }
+    }
+
+    private func networkMetric(_ title: String, value: Int, icon: String, tint: Color) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: icon).foregroundStyle(tint).frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(value)").font(.system(size: 19, weight: .bold, design: .rounded))
+                Text(title).font(.caption).foregroundStyle(DashboardPalette.text.opacity(0.48))
+            }
+            Spacer()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(DashboardPalette.glassFill, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(DashboardPalette.border))
+    }
+
+    private var interfacePanel: some View {
+        DashboardPanel(title: "本地网卡", subtitle: "地址来自 ifconfig；活动状态由 UP/RUNNING 和系统 status 综合判断") {
+            if snapshot.interfaces.isEmpty {
+                emptyState("尚未读取到网卡", icon: "network.slash")
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(snapshot.interfaces) { interface in
+                        HStack(alignment: .top, spacing: 12) {
+                            Circle()
+                                .fill(interface.isActive ? Color.green : Color.secondary.opacity(0.35))
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text(interface.name).font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                    Text(interface.isActive ? "活动" : "未活动")
+                                        .font(.caption2).foregroundStyle(interface.isActive ? .green : .secondary)
+                                }
+                                Text(interface.addresses.isEmpty ? "无 IP 地址" : interface.addresses.joined(separator: "  ·  "))
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(DashboardPalette.text.opacity(0.58))
+                                    .textSelection(.enabled)
+                                if let hardwareAddress = interface.hardwareAddress {
+                                    Text(hardwareAddress).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 9)
+                        if interface.id != snapshot.interfaces.last?.id { Divider().overlay(DashboardPalette.border) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var routePanel: some View {
+        DashboardPanel(title: "流量路由", subtitle: "静态规则包括通过 route add 等方式写入的网关路由") {
+            VStack(spacing: 12) {
+                HStack {
+                    Picker("路由范围", selection: $showsAllRoutes) {
+                        Text("静态规则").tag(false)
+                        Text("全部路由").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 230)
+                    Spacer()
+                    if snapshot.checkedAt != .distantPast {
+                        Text("更新于 \(snapshot.checkedAt.formatted(date: .omitted, time: .standard))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                if let errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(DashboardPalette.coral)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if displayedRoutes.isEmpty {
+                    emptyState(showsAllRoutes ? "没有读取到 IPv4 路由" : "没有检测到静态网关规则", icon: "arrow.triangle.branch")
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(displayedRoutes) { route in
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(route.destination)
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                    Text(route.flags)
+                                        .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                                Text(route.gateway)
+                                    .font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                                Text(route.interfaceName)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(DashboardPalette.blue)
+                                    .frame(width: 52, alignment: .trailing)
+                            }
+                            .padding(.vertical, 10)
+                            if route.id != displayedRoutes.last?.id { Divider().overlay(DashboardPalette.border) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func emptyState(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 13))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 74)
+    }
+
+    private func monitorContinuously() async {
+        while !Task.isCancelled {
+            await refresh()
+            try? await Task.sleep(for: .seconds(5))
+        }
+    }
+
+    private func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            snapshot = try await monitor.snapshot()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
