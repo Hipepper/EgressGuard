@@ -3,6 +3,7 @@ import AppKit
 
 struct SettingsView: View {
     @Bindable var model: AppModel
+    @State private var contentSelection: SettingsSection = .overview
 
     var body: some View {
         HStack(spacing: 0) {
@@ -13,7 +14,7 @@ struct SettingsView: View {
             )
                 .frame(width: 228)
             Group {
-                switch model.selectedSettingsSection ?? .overview {
+                switch contentSelection {
                 case .overview: OverviewDashboardView(model: model)
                 case .rules: RulesSettingsView(
                     settings: $model.settings,
@@ -30,6 +31,15 @@ struct SettingsView: View {
                 )
                 }
             }
+            .id(contentSelection)
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .offset(x: 10)),
+                removal: .opacity
+            ))
+            .animation(
+                .easeOut(duration: SettingsLayoutMetrics.contentTransitionDuration),
+                value: contentSelection
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(DashboardPalette.canvas)
             .background(.ultraThinMaterial)
@@ -46,6 +56,16 @@ struct SettingsView: View {
         .background(DashboardPalette.sidebar)
         .preferredColorScheme(model.settings.interfaceTheme.colorScheme)
         .id(model.settings.interfaceTheme)
+        .onAppear {
+            contentSelection = model.selectedSettingsSection ?? .overview
+        }
+        .onChange(of: model.selectedSettingsSection) { _, newSelection in
+            let destination = newSelection ?? .overview
+            guard destination != contentSelection else { return }
+            withAnimation(.easeOut(duration: SettingsLayoutMetrics.contentTransitionDuration)) {
+                contentSelection = destination
+            }
+        }
     }
 }
 
@@ -53,14 +73,15 @@ private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection?
     let isProtectionActive: Bool
     @Binding var theme: InterfaceTheme
+    @State private var visualSelection: SettingsSection
     @State private var visualTheme: InterfaceTheme
     @State private var themeCommitTask: Task<Void, Never>?
-    @Namespace private var selectionAnimation
 
     init(selection: Binding<SettingsSection?>, isProtectionActive: Bool, theme: Binding<InterfaceTheme>) {
         _selection = selection
         self.isProtectionActive = isProtectionActive
         _theme = theme
+        _visualSelection = State(initialValue: selection.wrappedValue ?? .overview)
         _visualTheme = State(initialValue: theme.wrappedValue)
     }
 
@@ -77,7 +98,7 @@ private struct SettingsSidebar: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 28)
 
-            VStack(spacing: 5) {
+            VStack(spacing: SettingsLayoutMetrics.sidebarItemSpacing) {
                 ForEach(SettingsSection.allCases) { section in
                     Button {
                         selectSection(section)
@@ -85,27 +106,27 @@ private struct SettingsSidebar: View {
                         HStack(spacing: 11) {
                             Image(systemName: section.symbolName)
                                 .font(.system(size: 14, weight: .medium)).frame(width: 20)
-                            Text(section.title).fontWeight(selection == section ? .semibold : .regular)
+                            Text(section.title).fontWeight(visualSelection == section ? .semibold : .regular)
                             Spacer()
                         }
-                        .foregroundStyle(selection == section ? Color.white : DashboardPalette.text.opacity(0.62))
+                        .foregroundStyle(visualSelection == section ? Color.white : DashboardPalette.text.opacity(0.62))
                         .padding(.horizontal, 14)
-                        .frame(height: 42)
-                        .background {
-                            if selection == section {
-                                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                    .fill(LinearGradient(
-                                        colors: [DashboardPalette.coral, DashboardPalette.pink, DashboardPalette.blue],
-                                        startPoint: .leading, endPoint: .trailing
-                                    ))
-                                    .shadow(color: DashboardPalette.pink.opacity(0.24), radius: 12, y: 5)
-                                    .matchedGeometryEffect(id: "sidebar-selection", in: selectionAnimation)
-                            }
-                        }
+                        .frame(height: SettingsLayoutMetrics.sidebarItemHeight)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
+            }
+            .background(alignment: .top) {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [DashboardPalette.coral, DashboardPalette.pink, DashboardPalette.blue],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ))
+                    .frame(height: SettingsLayoutMetrics.sidebarItemHeight)
+                    .shadow(color: DashboardPalette.pink.opacity(0.20), radius: 9, y: 4)
+                    .offset(y: sidebarSelectionOffset)
             }
             .overlay {
                 GeometryReader { proxy in
@@ -145,40 +166,46 @@ private struct SettingsSidebar: View {
             LinearGradient(colors: [DashboardPalette.sidebar, DashboardPalette.sidebarBottom], startPoint: .top, endPoint: .bottom)
         )
         .background(.ultraThinMaterial)
+        .onChange(of: selection) { _, newSelection in
+            guard let newSelection, newSelection != visualSelection else { return }
+            visualSelection = newSelection
+        }
     }
 
     private var themeSelector: some View {
-        HStack(spacing: 3) {
-            ForEach(InterfaceTheme.allCases) { option in
-                Button {
-                    selectTheme(option)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: option.symbolName)
-                        Text(option.title)
-                    }
-                        .font(.system(size: 10, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 32)
-                        .foregroundStyle(visualTheme == option ? Color.white : DashboardPalette.text.opacity(0.62))
-                        .background {
-                            if visualTheme == option {
-                                Capsule()
-                                    .fill(LinearGradient(
-                                        colors: [DashboardPalette.pink, DashboardPalette.blue],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    ))
-                                    .matchedGeometryEffect(id: "theme-selection", in: selectionAnimation)
-                            }
+        GeometryReader { proxy in
+            let themes = InterfaceTheme.allCases
+            let itemWidth = proxy.size.width / CGFloat(themes.count)
+
+            HStack(spacing: 0) {
+                ForEach(themes) { option in
+                    Button {
+                        selectTheme(option)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: option.symbolName)
+                            Text(option.title)
                         }
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 32)
+                            .foregroundStyle(visualTheme == option ? Color.white : DashboardPalette.text.opacity(0.62))
+                    }
+                    .buttonStyle(.plain)
+                    .help(option.title)
                 }
-                .buttonStyle(.plain)
-                .help(option.title)
             }
-        }
-        .overlay {
-            GeometryReader { proxy in
+            .background(alignment: .leading) {
+                Capsule()
+                    .fill(LinearGradient(
+                        colors: [DashboardPalette.pink, DashboardPalette.blue],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ))
+                    .frame(width: itemWidth, height: 32)
+                    .offset(x: themeSelectionOffset(itemWidth: itemWidth))
+            }
+            .overlay {
                 Color.clear
                     .contentShape(Rectangle())
                     .gesture(
@@ -195,6 +222,7 @@ private struct SettingsSidebar: View {
                     )
             }
         }
+        .frame(height: 32)
         .padding(3)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().stroke(DashboardPalette.border))
@@ -202,15 +230,24 @@ private struct SettingsSidebar: View {
     }
 
     private func selectSection(_ section: SettingsSection) {
-        guard selection != section else { return }
-        withAnimation(.smooth(duration: SettingsLayoutMetrics.selectionAnimationDuration)) {
+        guard visualSelection != section else { return }
+        withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+            visualSelection = section
+        }
+
+        // Keep the expensive detail hierarchy out of the indicator's animation
+        // transaction. Animating that tree makes material, shadows, and lists
+        // re-render on every frame of the sidebar movement.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             selection = section
         }
     }
 
     private func selectTheme(_ option: InterfaceTheme) {
         guard visualTheme != option else { return }
-        withAnimation(.smooth(duration: SettingsLayoutMetrics.selectionAnimationDuration)) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
             visualTheme = option
         }
         themeCommitTask?.cancel()
@@ -219,6 +256,16 @@ private struct SettingsSidebar: View {
             guard !Task.isCancelled else { return }
             theme = option
         }
+    }
+
+    private var sidebarSelectionOffset: CGFloat {
+        let index = SettingsSection.allCases.firstIndex(of: visualSelection) ?? 0
+        return CGFloat(index) * (SettingsLayoutMetrics.sidebarItemHeight + SettingsLayoutMetrics.sidebarItemSpacing)
+    }
+
+    private func themeSelectionOffset(itemWidth: CGFloat) -> CGFloat {
+        let index = InterfaceTheme.allCases.firstIndex(of: visualTheme) ?? 0
+        return CGFloat(index) * itemWidth
     }
 }
 
