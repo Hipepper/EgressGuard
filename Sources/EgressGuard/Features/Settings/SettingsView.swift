@@ -9,8 +9,7 @@ struct SettingsView: View {
         HStack(spacing: 0) {
             SettingsSidebar(
                 selection: $model.selectedSettingsSection,
-                isProtectionActive: model.settings.isProtectionActive,
-                theme: $model.settings.interfaceTheme
+                isProtectionActive: model.settings.isProtectionActive
             )
                 .frame(width: 228)
             Group {
@@ -72,17 +71,12 @@ struct SettingsView: View {
 private struct SettingsSidebar: View {
     @Binding var selection: SettingsSection?
     let isProtectionActive: Bool
-    @Binding var theme: InterfaceTheme
     @State private var visualSelection: SettingsSection
-    @State private var visualTheme: InterfaceTheme
-    @State private var themeCommitTask: Task<Void, Never>?
 
-    init(selection: Binding<SettingsSection?>, isProtectionActive: Bool, theme: Binding<InterfaceTheme>) {
+    init(selection: Binding<SettingsSection?>, isProtectionActive: Bool) {
         _selection = selection
         self.isProtectionActive = isProtectionActive
-        _theme = theme
         _visualSelection = State(initialValue: selection.wrappedValue ?? .overview)
-        _visualTheme = State(initialValue: theme.wrappedValue)
     }
 
     var body: some View {
@@ -149,9 +143,6 @@ private struct SettingsSidebar: View {
             .padding(.horizontal, 10)
 
             Spacer()
-            themeSelector
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
             HStack(spacing: 8) {
                 Circle().fill(isProtectionActive ? .green : .orange).frame(width: 7, height: 7)
                     .shadow(color: (isProtectionActive ? Color.green : Color.orange).opacity(0.8), radius: 5)
@@ -172,63 +163,6 @@ private struct SettingsSidebar: View {
         }
     }
 
-    private var themeSelector: some View {
-        GeometryReader { proxy in
-            let themes = InterfaceTheme.allCases
-            let itemWidth = proxy.size.width / CGFloat(themes.count)
-
-            HStack(spacing: 0) {
-                ForEach(themes) { option in
-                    Button {
-                        selectTheme(option)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: option.symbolName)
-                            Text(option.title)
-                        }
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 32)
-                            .foregroundStyle(visualTheme == option ? Color.white : DashboardPalette.text.opacity(0.62))
-                    }
-                    .buttonStyle(.plain)
-                    .help(option.title)
-                }
-            }
-            .background(alignment: .leading) {
-                Capsule()
-                    .fill(LinearGradient(
-                        colors: [DashboardPalette.pink, DashboardPalette.blue],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ))
-                    .frame(width: itemWidth, height: 32)
-                    .offset(x: themeSelectionOffset(itemWidth: itemWidth))
-            }
-            .overlay {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                let themes = InterfaceTheme.allCases
-                                guard let index = ContinuousSelection.index(
-                                    position: value.location.x,
-                                    totalExtent: proxy.size.width,
-                                    itemCount: themes.count
-                                ) else { return }
-                                selectTheme(themes[index])
-                            }
-                    )
-            }
-        }
-        .frame(height: 32)
-        .padding(3)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(DashboardPalette.border))
-        .onDisappear { themeCommitTask?.cancel() }
-    }
-
     private func selectSection(_ section: SettingsSection) {
         guard visualSelection != section else { return }
         withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
@@ -245,28 +179,11 @@ private struct SettingsSidebar: View {
         }
     }
 
-    private func selectTheme(_ option: InterfaceTheme) {
-        guard visualTheme != option else { return }
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-            visualTheme = option
-        }
-        themeCommitTask?.cancel()
-        themeCommitTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(SettingsLayoutMetrics.themeCommitDelay))
-            guard !Task.isCancelled else { return }
-            theme = option
-        }
-    }
-
     private var sidebarSelectionOffset: CGFloat {
         let index = SettingsSection.allCases.firstIndex(of: visualSelection) ?? 0
         return CGFloat(index) * (SettingsLayoutMetrics.sidebarItemHeight + SettingsLayoutMetrics.sidebarItemSpacing)
     }
 
-    private func themeSelectionOffset(itemWidth: CGFloat) -> CGFloat {
-        let index = InterfaceTheme.allCases.firstIndex(of: visualTheme) ?? 0
-        return CGFloat(index) * itemWidth
-    }
 }
 
 extension InterfaceTheme {
@@ -1214,9 +1131,26 @@ private struct PreferencesSettingsView: View {
                     VStack(alignment: .leading, spacing: 7) {
                         Text("设置")
                             .font(.system(size: 30, weight: .bold, design: .rounded))
-                        Text("配置自动检测频率和 macOS 顶部状态栏的展示内容。")
+                        Text("配置应用外观、自动检测频率和 macOS 顶部状态栏的展示内容。")
                             .font(.system(size: 14))
                             .foregroundStyle(DashboardPalette.text.opacity(0.52))
+                    }
+
+                    DashboardPanel(title: "外观", subtitle: "选择界面配色，自动模式会跟随 macOS 系统设置") {
+                        preferenceRow(
+                            icon: "circle.lefthalf.filled",
+                            title: "颜色模式",
+                            subtitle: "更改会立即应用到主窗口和菜单栏面板"
+                        ) {
+                            Picker("颜色模式", selection: $settings.interfaceTheme) {
+                                ForEach(InterfaceTheme.allCases) { theme in
+                                    Label(theme.title, systemImage: theme.symbolName).tag(theme)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                            .frame(width: 300)
+                        }
                     }
 
                     DashboardPanel(title: "自动检测", subtitle: "网络状态变化时仍会立即检测，此处作为周期兜底") {

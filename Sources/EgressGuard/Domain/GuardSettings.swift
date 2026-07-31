@@ -223,7 +223,6 @@ enum ContinuousSelection {
 enum SettingsLayoutMetrics {
     static let selectionAnimationDuration = 0.16
     static let contentTransitionDuration = 0.20
-    static let themeCommitDelay = 0.10
     static let localNetworkInitialLoadDelay = 0.24
     static let sidebarItemHeight: CGFloat = 42
     static let sidebarItemSpacing: CGFloat = 5
